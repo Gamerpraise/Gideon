@@ -111,8 +111,14 @@ async function connect(bot) {
         });
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
-            if (type !== 'notify') return;
             for (const raw of messages) {
+                // Right after pairing, WhatsApp delivers a short burst of recent history as
+                // type "append" (not "notify") while it syncs the new linked device. A command
+                // typed in that window would otherwise be silently ignored. We still skip genuinely
+                // OLD history (so the bot doesn't replay months-old messages as commands) but let
+                // anything from the last 2 minutes through, "append" or not.
+                const ageSec = Date.now() / 1000 - (Number(raw.messageTimestamp) || 0);
+                if (type !== 'notify' && ageSec > 120) continue;
                 try { await handleMessage(sock, raw, bot); }
                 catch (e) { log(bot, 'handler error:', e.message); }
             }
