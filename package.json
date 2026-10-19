@@ -1,0 +1,27 @@
+{
+  "name": "gideon-web",
+  "version": "1.0.0",
+  "description": "Pair your WhatsApp number and Gideon starts running on it instantly — no uploads, no hosting panel",
+  "main": "index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "postinstall": "node patch.js"
+  },
+  "author": "Gpraise",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  },
+  "optionalDependencies": {
+    "mongodb": "^6.10.0",
+    "sharp": "^0.33.5",
+    "wa-sticker-formatter": "^4.4.4"
+  }
+}
