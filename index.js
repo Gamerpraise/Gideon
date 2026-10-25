@@ -1,106 +1,243 @@
-import express from 'express';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { EventEmitter } from 'events';
-import { rateLimit, readJob, getTotal } from './store.js';
-import { startSession, resetTmp, HttpError } from './whatsapp.js';
-import * as manager from './manager.js';
+const fs = require('fs')
+const path = require('path')
+const pino = require('pino')
+const NodeCache = require('node-cache')
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  Browsers,
+  DisconnectReason,
+  jidNormalizedUser
+} = require('@whiskeysockets/baileys')
+const { Boom } = require('@hapi/boom')
+const config = require('./config')
+const handler = require('./handler')
+const fn = require('./functions')
+const store = require('./store')
+const { styledContent, box, contentToMessage } = require('./style')
+const { sendButtons } = require('./buttons')
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = process.env.PORT || 8000;
-const app = express();
+const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 120, useClones: false })
+const messageCache = new NodeCache({ stdTTL: 3600, checkperiod: 120, useClones: false })
+const sentMessageCache = new NodeCache({ stdTTL: 3600, checkperiod: 120, useClones: false })
+const processedIds = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false })
+const logger = pino({ level: 'silent' })
+const startTime = Date.now()
+global.startTime = startTime
 
-EventEmitter.defaultMaxListeners = 500;
-app.disable('x-powered-by');
-app.set('trust proxy', 1); // Render and most hosts sit behind a proxy
-
-resetTmp(); // clear half-finished logins from a previous run
-
-app.use((req, res, next) => {
-    res.set({
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
-        'Referrer-Policy': 'no-referrer',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
-    });
-    next();
-});
-
-// Only these routes exist – project files are never served.
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/health', (req, res) => res.send('ok')); // point an uptime pinger here to keep a free host awake
-
-const api = express.Router();
-api.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-
-api.get('/config', (req, res) => {
-    res.send({
-        siteName: process.env.SITE_NAME || 'Gideon',
-        links: {
-            youtube: process.env.YOUTUBE_URL || 'https://youtube.com/@gamerpraise-mods',
-            github: process.env.GITHUB_URL || 'https://github.com/Gamerpraise/',
-            channel: process.env.CHANNEL_URL || 'https://whatsapp.com/channel/0029VbBRPc3CMY0IePiiU808'
-        },
-        total: getTotal(),
-        hosting: manager.info()
-    });
-});
-
-api.get('/total', (req, res) => res.send({ total: getTotal() }));
-
-const fail = (res, e) => {
-    const status = e instanceof HttpError ? e.status : 500;
-    res.status(status).send({ error: e.message || 'Something went wrong. Please try again.' });
-};
-
-api.get('/pair', rateLimit(8), async (req, res) => {
-    if (!manager.hostingOn()) return res.status(503).send({ error: 'Bot hosting is currently off.' });
-    if (!manager.slotsLeft()) return res.status(503).send({ error: 'Bot slots are full right now. Please try again later.' });
-    const number = String(req.query.number || '').replace(/\D/g, '');
-    if (!number) return res.status(400).send({ error: 'Please enter your WhatsApp number.' });
-    if (number.startsWith('0') || number.length < 8 || number.length > 15) {
-        return res.status(400).send({ error: 'Use your full international number without + or spaces, and without a leading 0 (example: 2348012345678).' });
+function prepareSession() {
+  const sessionDir = path.resolve(__dirname, config.sessionDir)
+  if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true })
+  const credsPath = path.join(sessionDir, 'creds.json')
+  const candidates = [
+    credsPath,
+    path.join(sessionDir, 'cred.json'),
+    path.join(__dirname, 'cred.json'),
+    path.join(__dirname, 'creds.json'),
+    path.join(__dirname, 'session.json'),
+    path.join(process.cwd(), 'session', 'cred.json'),
+    path.join(process.cwd(), 'session', 'creds.json'),
+    path.join(process.cwd(), 'cred.json'),
+    path.join(process.cwd(), 'creds.json')
+  ]
+  if (!fs.existsSync(credsPath)) {
+    const found = candidates.find((file) => file !== credsPath && fs.existsSync(file))
+    if (found) {
+      fs.copyFileSync(found, credsPath)
+      console.log('[session] copied', found, 'to session/creds.json')
     }
-    try { res.send(await startSession({ phoneNumber: number })); }
-    catch (e) { fail(res, e); }
-});
-
-api.get('/qr', rateLimit(8), async (req, res) => {
-    if (!manager.hostingOn()) return res.status(503).send({ error: 'Bot hosting is currently off.' });
-    if (!manager.slotsLeft()) return res.status(503).send({ error: 'Bot slots are full right now. Please try again later.' });
-    try { res.send(await startSession({})); }
-    catch (e) { fail(res, e); }
-});
-
-api.get('/status', (req, res) => {
-    const id = String(req.query.id || '');
-    if (!/^[a-f0-9]{32}$/.test(id)) return res.status(400).send({ status: 'error', error: 'Bad request.' });
-    const job = readJob(id);
-    if (!job) return res.status(404).send({ status: 'unknown', error: 'This request has expired. Please start again.' });
-    res.send({ status: job.status, qr: job.qr, number: job.number, error: job.error });
-});
-
-app.use('/api', api);
-app.use((req, res) => res.status(404).send('Not found'));
-
-// Baileys throws harmless network errors now and then – log them, don't crash.
-process.on('unhandledRejection', (e) => console.log('Unhandled rejection:', e?.message || e));
-process.on('uncaughtException', (e) => console.log('Uncaught exception:', e?.message || e));
-
-const server = app.listen(PORT, () => {
-    console.log(`✅ Gideon web running on http://localhost:${PORT}`);
-    manager.restoreAll().catch((e) => console.error('Could not restore saved bots:', e));
-});
-
-// Render sends SIGTERM before restarting/redeploying – save every login first.
-let closing = false;
-for (const sig of ['SIGTERM', 'SIGINT']) {
-    process.on(sig, async () => {
-        if (closing) return;
-        closing = true;
-        console.log(`${sig} received – saving bots…`);
-        server.close();
-        try { await manager.shutdown(); } catch (e) { console.error(e); }
-        process.exit(0);
-    });
+  }
+  if (!fs.existsSync(credsPath)) {
+    console.log('[session] no creds.json or cred.json found. Upload it into the session folder and restart.')
+  }
+  return sessionDir
 }
+
+const sessionDir = prepareSession()
+
+handler.loadCommands()
+handler.watchCommands()
+
+function cacheMessage(key, message) {
+  if (!key?.id || !message) return
+  sentMessageCache.set(key.id, message)
+  if (key.remoteJid) sentMessageCache.set(`${key.remoteJid}:${key.id}`, message)
+  messageCache.set(key.id, { key, message })
+}
+
+function readCachedMessage(key) {
+  if (!key?.id) return undefined
+  return (
+    sentMessageCache.get(key.id) ||
+    sentMessageCache.get(`${key.remoteJid}:${key.id}`) ||
+    messageCache.get(key.id)?.message
+  )
+}
+
+function patchSocket(sock) {
+  const originalSend = sock.sendMessage.bind(sock)
+  sock.sendMessage = async (jid, content, options = {}) => {
+    const { skipStyle, ...rest } = options || {}
+    const payload = skipStyle ? content : styledContent(content)
+    const sent = await originalSend(jid, payload, rest)
+    if (sent?.key?.id) {
+      cacheMessage(sent.key, sent.message || contentToMessage(payload))
+    }
+    return sent
+  }
+  sock.box = box
+  sock.sendButtons = (jid, text, extra = {}) => sendButtons(sock, jid, text, extra)
+}
+
+async function notifyOwner(sock) {
+  try {
+    const owner = fn.toJid(config.ownerNumber)
+    await sock.sendMessage(owner, {
+      text: `Owner : ${config.ownerName}\nPrefix : ${config.prefix}\nMode : ${store.get().public ? 'Public' : 'Private'}\nStatus : Online`
+    })
+  } catch (err) {
+    console.log('[notify]', err.message)
+  }
+}
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState(sessionDir)
+  const { version } = await fetchLatestBaileysVersion()
+
+  const sock = makeWASocket({
+    version,
+    logger,
+    printQRInTerminal: false,
+    browser: Browsers.ubuntu('Chrome'),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, logger)
+    },
+    msgRetryCounterCache,
+    generateHighQualityLinkPreview: false,
+    syncFullHistory: false,
+    markOnlineOnConnect: config.alwaysOnline,
+    retryRequestDelayMs: 500,
+    getMessage: async (key) => {
+      return readCachedMessage(key) || undefined
+    }
+  })
+
+  patchSocket(sock)
+  sock.ev.on('creds.update', saveCreds)
+
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update
+    if (qr) {
+      console.log('[session] QR received. Place creds.json or cred.json in ./session and restart.')
+    }
+    if (connection === 'open') {
+      console.log(`[${config.botName}] connected as ${sock.user?.id}`)
+      console.log(`[${config.botName}] ready. Send .menu or .ping`)
+      if (config.alwaysOnline) {
+        sock.sendPresenceUpdate('available').catch(() => {})
+      }
+      notifyOwner(sock).catch(() => {})
+    }
+    if (connection === 'close') {
+      const status = new Boom(lastDisconnect?.error)?.output?.statusCode
+      const loggedOut = status === DisconnectReason.loggedOut
+      console.log('[connection] closed', status, loggedOut ? '(logged out)' : '')
+      if (!loggedOut) {
+        setTimeout(startBot, 3000)
+      } else {
+        console.log('[session] logged out. Upload a fresh creds.json into ./session and restart.')
+      }
+    }
+  })
+
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    console.log(`[msg] ${type} x${messages.length}`)
+    for (const msg of messages) {
+      if (msg.key?.id && msg.message) cacheMessage(msg.key, msg.message)
+      if (msg.key.remoteJid === 'status@broadcast') {
+        if (config.autoStatusView) {
+          try {
+            await sock.readMessages([msg.key])
+          } catch {}
+        }
+        continue
+      }
+      const id = msg.key?.id
+      if (id && processedIds.get(id)) continue
+      if (id) processedIds.set(id, true)
+      if (config.autoRead && msg.key?.remoteJid) {
+        try {
+          await sock.readMessages([msg.key])
+        } catch {}
+      }
+      handler.handleMessage(sock, msg).catch((err) => console.error('[handler]', err))
+    }
+  })
+
+  sock.ev.on('messages.update', async (updates) => {
+    const db = store.get()
+    if (!db.antidelete) return
+    for (const update of updates) {
+      if (!update.update.message && update.key && !update.key.fromMe) {
+        const cached = messageCache.get(update.key.id)
+        if (!cached || !cached.message) continue
+        const sender = cached.key.participant || cached.key.remoteJid
+        try {
+          await sock.sendMessage(fn.toJid(config.ownerNumber), {
+            text: `Anti-delete\nFrom: ${sender}\nChat: ${cached.key.remoteJid}`
+          })
+          await sock.sendMessage(fn.toJid(config.ownerNumber), { forward: cached })
+        } catch {}
+      }
+    }
+  })
+
+  sock.ev.on('call', async (calls) => {
+    if (!config.autoRejectCall) return
+    for (const call of calls) {
+      if (call.status === 'offer') {
+        try {
+          await sock.rejectCall(call.id, call.from)
+          await sock.sendMessage(call.from, { text: `${config.botName} does not take calls.` })
+        } catch {}
+      }
+    }
+  })
+
+  sock.ev.on('group-participants.update', async (update) => {
+    try {
+      const db = store.get()
+      const { id, participants, action } = update
+      const metadata = await sock.groupMetadata(id)
+      for (const user of participants) {
+        const tag = `@${fn.cleanJid(user)}`
+        if (action === 'add' && db.welcome[id]) {
+          await sock.sendMessage(id, {
+            text: `Welcome ${tag} to ${metadata.subject}\n${db.welcome[id] === true ? 'Enjoy your stay.' : db.welcome[id]}`,
+            mentions: [user]
+          })
+        }
+        if (action === 'remove' && db.goodbye[id]) {
+          await sock.sendMessage(id, {
+            text: `Goodbye ${tag}\n${db.goodbye[id] === true ? 'We will miss you.' : db.goodbye[id]}`,
+            mentions: [user]
+          })
+        }
+      }
+    } catch {}
+  })
+
+  sock.userJid = () => jidNormalizedUser(sock.user.id)
+  return sock
+}
+
+startBot().catch((err) => {
+  console.error('[fatal]', err)
+  process.exit(1)
+})
+
+process.on('uncaughtException', (err) => console.error('[uncaught]', err))
+process.on('unhandledRejection', (err) => console.error('[unhandled]', err))

@@ -1,0 +1,277 @@
+const fs = require('fs')
+const path = require('path')
+const axios = require('axios')
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys')
+const FileType = require('file-type')
+const config = require('./config')
+const store = require('./store')
+const { box } = require('./style')
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function runtime(seconds) {
+  seconds = Number(seconds)
+  const d = Math.floor(seconds / 86400)
+  const h = Math.floor(seconds / 3600) % 24
+  const m = Math.floor(seconds / 60) % 60
+  const s = Math.floor(seconds % 60)
+  return `${d}d ${h}h ${m}m ${s}s`
+}
+
+function clockString() {
+  return new Date().toLocaleString('en-GB', { timeZone: config.timezone })
+}
+
+function pickRandom(list) {
+  return list[Math.floor(Math.random() * list.length)]
+}
+
+function isUrl(text) {
+  return /https?:\/\/[^\s]+/i.test(text || '')
+}
+
+function extractUrls(text) {
+  return (text || '').match(/https?:\/\/[^\s]+/gi) || []
+}
+
+function cleanJid(jid = '') {
+  return jid.replace(/:\d+/, '').split('@')[0].split(':')[0].replace(/\D/g, '')
+}
+
+function toJid(num) {
+  return `${String(num).replace(/\D/g, '')}@s.whatsapp.net`
+}
+
+function isOwner(jid, extraOwners = []) {
+  const num = cleanJid(jid)
+  const owners = new Set([
+    config.ownerNumber.replace(/\D/g, ''),
+    ...store.get().owners,
+    ...extraOwners.map(cleanJid)
+  ])
+  return owners.has(num)
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`
+}
+
+async function fetchJson(url, options = {}) {
+  const res = await axios({ url, method: 'GET', timeout: 30000, ...options })
+  return res.data
+}
+
+async function getBuffer(url, options = {}) {
+  const res = await axios({
+    url,
+    method: 'GET',
+    responseType: 'arraybuffer',
+    timeout: 60000,
+    ...options
+  })
+  return Buffer.from(res.data)
+}
+
+async function downloadMediaMessage(quoted) {
+  const msg = quoted.msg || quoted
+  const type = quoted.mtype || Object.keys(msg)[0]
+  const mimeType = type.replace('Message', '')
+  const stream = await downloadContentFromMessage(msg, mimeType === 'sticker' ? 'sticker' : mimeType)
+  let buffer = Buffer.from([])
+  for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk])
+  return buffer
+}
+
+function unwrapViewOnce(message) {
+  if (!message) return null
+  const wrapped =
+    message.viewOnceMessage?.message ||
+    message.viewOnceMessageV2?.message ||
+    message.viewOnceMessageV2Extension?.message ||
+    (message.ephemeralMessage && unwrapViewOnce(message.ephemeralMessage.message)) ||
+    null
+  return wrapped || message
+}
+
+function getViewOnceContent(message) {
+  const unwrapped = unwrapViewOnce(message)
+  if (!unwrapped) return null
+  if (unwrapped.imageMessage) return { type: 'image', content: unwrapped.imageMessage }
+  if (unwrapped.videoMessage) return { type: 'video', content: unwrapped.videoMessage }
+  if (unwrapped.audioMessage) return { type: 'audio', content: unwrapped.audioMessage }
+  return null
+}
+
+function isViewOnceMessage(message) {
+  if (!message) return false
+  if (
+    message.viewOnceMessage ||
+    message.viewOnceMessageV2 ||
+    message.viewOnceMessageV2Extension
+  ) return true
+  const unwrapped = unwrapViewOnce(message)
+  return Boolean(
+    unwrapped?.imageMessage?.viewOnce ||
+    unwrapped?.videoMessage?.viewOnce ||
+    unwrapped?.audioMessage?.viewOnce
+  )
+}
+
+async function downloadViewOnce(message) {
+  const media = getViewOnceContent(message)
+  if (!media) return null
+  const stream = await downloadContentFromMessage(media.content, media.type)
+  let buffer = Buffer.from([])
+  for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk])
+  return {
+    type: media.type,
+    buffer,
+    caption: media.content.caption || '',
+    mimetype: media.content.mimetype,
+    ptt: media.content.ptt || false
+  }
+}
+
+async function sendViewOnceMedia(sock, jid, media, quoted) {
+  const payload = {}
+  if (media.caption) payload.caption = media.caption
+  if (media.type === 'image') payload.image = media.buffer
+  else if (media.type === 'video') payload.video = media.buffer
+  else {
+    payload.audio = media.buffer
+    payload.mimetype = media.mimetype || 'audio/ogg; codecs=opus'
+    payload.ptt = media.ptt
+  }
+  return sock.sendMessage(jid, payload, quoted ? { quoted } : {})
+}
+
+async function getFileType(buffer) {
+  return FileType.fromBuffer(buffer)
+}
+
+function parseMention(text = '') {
+  return (text.match(/@(\d{5,16})/g) || []).map((v) => v.replace('@', '') + '@s.whatsapp.net')
+}
+
+async function getGroupAdmins(participants = []) {
+  return participants.filter((p) => p.admin === 'admin' || p.admin === 'superadmin').map((p) => p.id)
+}
+
+function bytesToSize(bytes) {
+  return formatSize(bytes)
+}
+
+function tmpFile(ext = 'bin') {
+  return path.join(__dirname, `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`)
+}
+
+function saveTmp(buffer, ext) {
+  const file = tmpFile(ext)
+  fs.writeFileSync(file, buffer)
+  return file
+}
+
+function deleteTmp(file) {
+  try {
+    if (file && fs.existsSync(file)) fs.unlinkSync(file)
+  } catch {}
+}
+
+async function ytdl(url, type = 'audio') {
+  const apis = [
+    `https://api.siputzx.my.id/api/d/ytmp${type === 'audio' ? '3' : '4'}?url=${encodeURIComponent(url)}`,
+    `https://yt.tioo.eu.org/api/${type === 'audio' ? 'mp3' : 'mp4'}?url=${encodeURIComponent(url)}`,
+    `https://api.fgmods.xyz/api/downloader/yt${type === 'audio' ? 'mp3' : 'mp4'}?url=${encodeURIComponent(url)}&apikey=fg-dylux`
+  ]
+  for (const api of apis) {
+    try {
+      const data = await fetchJson(api)
+      const result = data.result || data.data || data
+      const media = result.dl_url || result.url || result.download || result.dlink
+      if (media) {
+        return {
+          title: result.title || 'YouTube media',
+          url: media,
+          thumbnail: result.thumbnail || result.thumb,
+          quality: result.quality || ''
+        }
+      }
+    } catch {}
+  }
+  throw new Error('Unable to download that YouTube media right now')
+}
+
+async function tiktokDl(url) {
+  const apis = [
+    `https://tikwm.com/api/?url=${encodeURIComponent(url)}`,
+    `https://api.siputzx.my.id/api/d/tiktok?url=${encodeURIComponent(url)}`
+  ]
+  for (const api of apis) {
+    try {
+      const data = await fetchJson(api)
+      const result = data.data || data.result || data
+      const video = result.play || result.hdplay || result.url || result.video
+      if (video) {
+        return {
+          title: result.title || 'TikTok video',
+          url: video,
+          audio: result.music || result.audio
+        }
+      }
+    } catch {}
+  }
+  throw new Error('Unable to download that TikTok video')
+}
+
+async function instaDl(url) {
+  const apis = [
+    `https://api.siputzx.my.id/api/d/igdl?url=${encodeURIComponent(url)}`,
+    `https://ig.tioo.eu.org/?url=${encodeURIComponent(url)}`
+  ]
+  for (const api of apis) {
+    try {
+      const data = await fetchJson(api)
+      const result = data.result || data.data || data
+      const list = Array.isArray(result) ? result : result.url ? [result] : result.media || []
+      if (list.length) return list
+    } catch {}
+  }
+  throw new Error('Unable to download that Instagram media')
+}
+
+module.exports = {
+  sleep,
+  runtime,
+  clockString,
+  pickRandom,
+  isUrl,
+  extractUrls,
+  cleanJid,
+  toJid,
+  isOwner,
+  formatSize,
+  fetchJson,
+  getBuffer,
+  downloadMediaMessage,
+  unwrapViewOnce,
+  getViewOnceContent,
+  isViewOnceMessage,
+  downloadViewOnce,
+  sendViewOnceMedia,
+  getFileType,
+  parseMention,
+  getGroupAdmins,
+  bytesToSize,
+  tmpFile,
+  saveTmp,
+  deleteTmp,
+  ytdl,
+  tiktokDl,
+  instaDl,
+  box
+}
