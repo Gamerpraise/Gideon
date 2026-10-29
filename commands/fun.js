@@ -1,4 +1,5 @@
 const fn = require('../functions')
+const au = require('../amongus')
 
 const truths = [
   'What is your biggest fear?',
@@ -14,6 +15,73 @@ const dares = [
 ]
 
 module.exports = [
+  {
+    name: 'amongus',
+    aliases: ['au'],
+    desc: 'Among Us game: open a lobby / join (groups only)',
+    category: 'fun',
+    run: au.cmdJoin
+  },
+  {
+    name: 'aun',
+    desc: 'Among Us: set your in-game name',
+    category: 'fun',
+    run: au.cmdName
+  },
+  {
+    name: 'aus',
+    desc: 'Among Us: settings (host only)',
+    category: 'fun',
+    run: au.cmdSettings
+  },
+  {
+    name: 'startau',
+    desc: 'Among Us: start the game (host only)',
+    category: 'fun',
+    run: au.cmdStart
+  },
+  {
+    name: 'aui',
+    desc: 'Among Us: imposter kill (use in DM): .aui kill <name>',
+    category: 'fun',
+    run: au.cmdKill
+  },
+  {
+    name: 'aue',
+    desc: 'Among Us: emergency meeting',
+    category: 'fun',
+    run: au.cmdEmergency
+  },
+  {
+    name: 'auv',
+    desc: 'Among Us: vote during a meeting',
+    category: 'fun',
+    run: au.cmdVote
+  },
+  {
+    name: 'aur',
+    desc: 'Among Us: resend your role (use in DM)',
+    category: 'fun',
+    run: au.cmdRole
+  },
+  {
+    name: 'aup',
+    desc: 'Among Us: list players',
+    category: 'fun',
+    run: au.cmdPlayers
+  },
+  {
+    name: 'leaveau',
+    desc: 'Among Us: leave the lobby',
+    category: 'fun',
+    run: au.cmdLeave
+  },
+  {
+    name: 'exitau',
+    desc: 'Among Us: end the game (host only)',
+    category: 'fun',
+    run: au.cmdExit
+  },
   {
     name: 'truth',
     aliases: ['t'],
