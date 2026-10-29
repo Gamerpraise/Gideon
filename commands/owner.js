@@ -170,7 +170,7 @@ module.exports = [
     owner: true,
     async run(sock, m) {
       await m.reply('Restarting...')
-      process.exit(0)
+      setTimeout(() => process.exit(42), 800)
     }
   },
   {
@@ -253,6 +253,7 @@ module.exports = [
     async run(sock, m) {
       const file = path.join(__dirname, '..', 'session', 'creds.json')
       if (!fs.existsSync(file)) return m.reply('No creds.json found in session.')
+      if (m.isGroup) return m.reply('Use this command in my private chat only.')
       await sock.sendMessage(m.chat, {
         document: fs.readFileSync(file),
         mimetype: 'application/json',

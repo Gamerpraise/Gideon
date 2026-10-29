@@ -67,17 +67,29 @@ module.exports = [
   },
   {
     name: 'getpp',
-    aliases: ['pp', 'profilepic'],
-    desc: 'Get profile picture',
+    aliases: ['pp', 'profilepic', 'dp'],
+    desc: 'Get profile picture (reply, tag, number, or "group")',
     category: 'media',
     async run(sock, m, { args }) {
-      const user = m.quoted?.sender || m.mentionedJid[0] || (args[0] ? fn.toJid(args[0]) : m.sender)
-      try {
-        const url = await sock.profilePictureUrl(user, 'image')
-        await sock.sendMessage(m.chat, { image: { url }, caption: `@${fn.cleanJid(user)}`, mentions: [user] })
-      } catch {
-        await m.reply('No profile picture.')
+      const wantsGroup = (args[0] || '').toLowerCase() === 'group' && m.isGroup
+      let user
+      if (wantsGroup) user = m.chat
+      else if (m.quoted?.sender) user = m.quoted.sender
+      else if (m.mentionedJid?.[0]) user = m.mentionedJid[0]
+      else if (args[0] && /\d{6,}/.test(args[0])) user = fn.toJid(args[0])
+      else user = m.isGroup ? m.sender : m.fromMe ? m.chat : m.chat
+      const candidates = [...new Set([user, ...(m.senderIds || []).filter(() => user === m.sender)])]
+      for (const jid of candidates) {
+        for (const type of ['image', 'preview']) {
+          try {
+            const url = await sock.profilePictureUrl(jid, type)
+            if (url) {
+              return sock.sendMessage(m.chat, { image: { url }, caption: wantsGroup ? 'Group picture' : `@${fn.cleanJid(jid)}`, mentions: [jid] }, { quoted: m._msg })
+            }
+          } catch {}
+        }
       }
+      await m.reply('No profile picture (none set, or their privacy hides it).')
     }
   },
   {
