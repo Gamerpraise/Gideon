@@ -8,6 +8,7 @@ module.exports = {
   desc: 'Owner: update the bot from GitHub',
   category: 'owner',
   owner: true,
+  dangerous: true,
   async run(sock, m, { args, config, store }) {
     const mode = (args[0] || '').toLowerCase()
     const db = store.get()

@@ -175,6 +175,7 @@ module.exports = [
   },
   {
     name: 'eval',
+    dangerous: true,
     aliases: ['>', 'execute'],
     desc: 'Run JavaScript as owner',
     category: 'owner',
@@ -192,6 +193,7 @@ module.exports = [
   },
   {
     name: 'exec',
+    dangerous: true,
     aliases: ['$', 'term'],
     desc: 'Run a shell command',
     category: 'owner',
@@ -246,6 +248,7 @@ module.exports = [
   },
   {
     name: 'getsession',
+    dangerous: true,
     aliases: ['session'],
     desc: 'Send session creds to owner',
     category: 'owner',

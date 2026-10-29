@@ -8,8 +8,21 @@ module.exports = [
     desc: 'Check bot speed',
     category: 'general',
     async run(sock, m) {
-      const start = Date.now()
-      await m.reply(`Pong ${Date.now() - start}ms\nUptime ${fn.runtime(process.uptime())}`)
+      // real numbers: how long WhatsApp took to deliver your message, how long sending a reply takes,
+      // and how busy this server is. Use these to tell if a slow reply is the bot or the host.
+      const arrived = Math.max(0, Date.now() - Number(m.messageTimestamp?.low ?? m.messageTimestamp ?? 0) * 1000)
+      const lagStart = Date.now()
+      await new Promise((r) => setImmediate(r))
+      const lag = Date.now() - lagStart
+      const t0 = Date.now()
+      const sent = await m.reply('Pinging...')
+      const send = Date.now() - t0
+      const text = `Pong\nSend time : ${send} ms\nDelivery  : about ${Math.round(arrived / 1000)}s (clock based)\nBusy lag  : ${lag} ms\nUptime    : ${fn.runtime(process.uptime())}`
+      try {
+        await sock.sendMessage(m.chat, { text, edit: sent.key })
+      } catch {
+        await m.reply(text)
+      }
     }
   },
   {

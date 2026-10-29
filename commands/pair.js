@@ -9,6 +9,7 @@ module.exports = [
     desc: 'Owner: give a number a pairing code to run Gideon on their WhatsApp',
     category: 'owner',
     owner: true,
+    dangerous: true,
     async run(sock, m, { args, config }) {
       if (!args[0]) return m.reply(`Example: ${config.prefix}pair 2348012345678\n(country code, no + or spaces)`)
       await m.react('⏳')
@@ -45,6 +46,7 @@ module.exports = [
     desc: 'Owner: remove a paired user',
     category: 'owner',
     owner: true,
+    dangerous: true,
     async run(sock, m, { args }) {
       const id = String(args[0] || '').replace(/\D/g, '')
       if (!id) return m.reply('Example: .unpair 2348012345678')
