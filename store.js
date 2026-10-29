@@ -14,7 +14,25 @@ const defaults = {
   antitoxic: {},
   autosticker: {},
   mute: {},
-  antidelete: true
+  antidelete: true,
+  afk: {},
+  warns: {},
+  prefix: null,
+  settings: {},
+  ghost: false,
+  ghostBackup: null,
+  users: {},
+  gxp: {},
+  levelup: {},
+  antibadword: {},
+  antispam: {},
+  reminders: [],
+  contacts: {},
+  followed: {},
+  autobio: { enabled: false, text: '{bot} online • {time} • {date}' },
+  updateSha: null,
+  updateNotified: null,
+  autoreply: { enabled: false, text: 'Hi {name}, I am not available right now. I will reply as soon as I can.', keywords: {}, cooldownMin: 60 }
 }
 
 function load() {
@@ -31,8 +49,25 @@ function load() {
 
 let data = load()
 
+let timer = null
+
 function save() {
+  if (timer) {
+    clearTimeout(timer)
+    timer = null
+  }
   fs.writeFileSync(file, JSON.stringify(data, null, 2))
+}
+
+// for busy writes (xp, contacts): one disk write every few seconds instead of every message
+function saveSoon(delay = 4000) {
+  if (timer) return
+  timer = setTimeout(() => {
+    timer = null
+    try {
+      fs.writeFileSync(file, JSON.stringify(data, null, 2))
+    } catch {}
+  }, delay)
 }
 
 module.exports = {
@@ -42,6 +77,7 @@ module.exports = {
     save()
   },
   save,
+  saveSoon,
   reload() {
     data = load()
     return data

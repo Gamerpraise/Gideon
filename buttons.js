@@ -1,4 +1,4 @@
-const { proto, generateWAMessageFromContent } = require('@whiskeysockets/baileys')
+const baileys = require('./baileys')
 const config = require('./config')
 const { box } = require('./style')
 
@@ -21,55 +21,63 @@ function toNativeButtons(buttons) {
   }))
 }
 
+// WhatsApp only draws interactive buttons from a normal (non-business) account when the
+// message carries these extra binary nodes. Without them the buttons are silently dropped.
+function flowNodes(jid) {
+  const nodes = [
+    {
+      tag: 'biz',
+      attrs: {},
+      content: [
+        {
+          tag: 'interactive',
+          attrs: { type: 'native_flow', v: '1' },
+          content: [{ tag: 'native_flow', attrs: { v: '9', name: 'mixed' } }]
+        }
+      ]
+    }
+  ]
+  if (!String(jid).endsWith('@g.us')) nodes.push({ tag: 'bot', attrs: { biz_bot: '1' } })
+  return nodes
+}
+
 async function sendButtons(sock, jid, text, extra = {}) {
   const body = extra.skipBox ? String(text ?? '') : box(text)
   const buttons = extra.buttons || linkButtons()
-  const nativeButtons = toNativeButtons(buttons)
   const quoted = extra.quoted
   const footer = extra.footer || `${config.botName} • ${config.ownerName}`
+  const mode = extra.mode || config.buttonMode || 'native'
 
-  try {
-    const sent = await sock.sendMessage(
-      jid,
-      {
-        text: body,
-        footer,
-        interactiveButtons: nativeButtons
-      },
-      { quoted, skipStyle: true }
-    )
-    if (sent?.key?.id) return sent
-  } catch (err) {
-    console.log('[buttons] interactiveButtons failed:', err.message)
-  }
-
-  try {
-    const msg = generateWAMessageFromContent(
-      jid,
-      {
-        viewOnceMessage: {
-          message: {
-            messageContextInfo: {
-              deviceListMetadata: {},
-              deviceListMetadataVersion: 2
-            },
-            interactiveMessage: proto.Message.InteractiveMessage.fromObject({
-              body: { text: body },
-              footer: { text: footer },
-              nativeFlowMessage: { buttons: nativeButtons }
-            })
+  if (mode === 'native') {
+    try {
+      const { proto, generateWAMessageFromContent } = baileys.get()
+      const msg = generateWAMessageFromContent(
+        jid,
+        {
+          viewOnceMessage: {
+            message: {
+              messageContextInfo: { deviceListMetadata: {}, deviceListMetadataVersion: 2 },
+              interactiveMessage: proto.Message.InteractiveMessage.create({
+                body: { text: body },
+                footer: { text: footer },
+                header: { title: '', subtitle: '', hasMediaAttachment: false },
+                nativeFlowMessage: { buttons: toNativeButtons(buttons), messageParamsJson: '' }
+              })
+            }
           }
-        }
-      },
-      { userJid: sock.user?.id, quoted }
-    )
-    await sock.relayMessage(jid, msg.message, { messageId: msg.key.id })
-    return msg
-  } catch (err) {
-    console.log('[buttons] nativeFlow failed:', err.message)
+        },
+        { userJid: sock.user?.id, quoted }
+      )
+      await sock.relayMessage(jid, msg.message, { messageId: msg.key.id, additionalNodes: flowNodes(jid) })
+      return msg
+    } catch (err) {
+      console.log('[buttons] native flow failed, sending text links:', err.message)
+    }
   }
 
-  return sock.sendMessage(jid, { text: body }, { quoted, skipStyle: true })
+  // text mode (or fallback): same links as plain text, always visible
+  const linksText = buttons.map((b) => `${b.text}: ${b.url}`).join('\n')
+  return sock.sendMessage(jid, { text: `${body}\n\n${linksText}` }, { quoted, skipStyle: true })
 }
 
 module.exports = { sendButtons, linkButtons }

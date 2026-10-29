@@ -1,6 +1,6 @@
 {
   "name": "gideon",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "description": "Gideon WhatsApp Baileys bot by Gpraise",
   "main": "index.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "katabump": "bash start.sh"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "keywords": [
     "whatsapp",
@@ -20,7 +20,8 @@
   "license": "MIT",
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "@whiskeysockets/baileys": "^6.7.18",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
+    "adm-zip": "^0.5.16",
     "axios": "^1.7.9",
     "cheerio": "^1.0.0",
     "file-type": "^16.5.4",

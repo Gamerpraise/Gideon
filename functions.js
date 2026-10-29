@@ -1,11 +1,15 @@
 const fs = require('fs')
 const path = require('path')
 const axios = require('axios')
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys')
+const baileys = require('./baileys')
 const FileType = require('file-type')
 const config = require('./config')
 const store = require('./store')
 const { box } = require('./style')
+
+function downloadContentFromMessage(...args) {
+  return baileys.get().downloadContentFromMessage(...args)
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -45,6 +49,7 @@ function toJid(num) {
 }
 
 function isOwner(jid, extraOwners = []) {
+  if (Array.isArray(jid)) return jid.some((j) => isOwner(j, extraOwners))
   const num = cleanJid(jid)
   const owners = new Set([
     config.ownerNumber.replace(/\D/g, ''),
@@ -137,6 +142,28 @@ async function downloadViewOnce(message) {
   }
 }
 
+// Download any media message (also unwraps view-once / ephemeral wrappers).
+// Returns { type, buffer, caption, mimetype, ptt } or null when it has no downloadable media.
+async function downloadAny(message, maxBytes = 40 * 1024 * 1024) {
+  let msg = message
+  for (let i = 0; i < 4 && msg; i++) {
+    const inner = msg.ephemeralMessage?.message || msg.viewOnceMessage?.message || msg.viewOnceMessageV2?.message || msg.viewOnceMessageV2Extension?.message || msg.documentWithCaptionMessage?.message
+    if (!inner) break
+    msg = inner
+  }
+  if (!msg) return null
+  for (const type of ['image', 'video', 'audio', 'sticker']) {
+    const content = msg[`${type}Message`]
+    if (!content) continue
+    if (Number(content.fileLength || 0) > maxBytes) throw new Error('File is too large')
+    const stream = await downloadContentFromMessage(content, type)
+    let buffer = Buffer.from([])
+    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk])
+    return { type, buffer, caption: content.caption || '', mimetype: content.mimetype, ptt: content.ptt || false }
+  }
+  return null
+}
+
 async function sendViewOnceMedia(sock, jid, media, quoted) {
   const payload = {}
   if (media.caption) payload.caption = media.caption
@@ -158,8 +185,36 @@ function parseMention(text = '') {
   return (text.match(/@(\d{5,16})/g) || []).map((v) => v.replace('@', '') + '@s.whatsapp.net')
 }
 
+// Every id (lid + phone) of every admin, so both addressing modes match.
 async function getGroupAdmins(participants = []) {
-  return participants.filter((p) => p.admin === 'admin' || p.admin === 'superadmin').map((p) => p.id)
+  const ids = []
+  for (const p of participants) {
+    if (p.admin !== 'admin' && p.admin !== 'superadmin') continue
+    ids.push(p.id, p.lid, p.phoneNumber, p.jid)
+  }
+  return [...new Set(ids.filter(Boolean))]
+}
+
+function sameUser(a, b) {
+  return Boolean(a && b) && cleanJid(a) === cleanJid(b)
+}
+
+// ids can be one jid or an array of jids
+function isInList(list = [], ids) {
+  const wanted = Array.isArray(ids) ? ids : [ids]
+  return list.some((entry) => wanted.some((id) => sameUser(entry, id)))
+}
+
+// Try to turn a @lid into a phone jid using Baileys' own LID map (v7).
+async function resolvePN(sock, jid) {
+  try {
+    if (!jid || !String(jid).endsWith('@lid')) return jid
+    const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
+    if (!pn) return jid
+    return String(pn).includes('@') ? pn : `${pn}@s.whatsapp.net`
+  } catch {
+    return jid
+  }
 }
 
 function bytesToSize(bytes) {
@@ -262,10 +317,14 @@ module.exports = {
   getViewOnceContent,
   isViewOnceMessage,
   downloadViewOnce,
+  downloadAny,
   sendViewOnceMedia,
   getFileType,
   parseMention,
   getGroupAdmins,
+  sameUser,
+  isInList,
+  resolvePN,
   bytesToSize,
   tmpFile,
   saveTmp,

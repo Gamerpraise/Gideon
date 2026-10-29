@@ -1,6 +1,10 @@
-const { getContentType, jidNormalizedUser, downloadContentFromMessage } = require('@whiskeysockets/baileys')
+const baileys = require('./baileys')
 const config = require('./config')
 const fn = require('./functions')
+
+const getContentType = (c) => baileys.get().getContentType(c)
+const jidNormalizedUser = (j) => baileys.get().jidNormalizedUser(j)
+const downloadContentFromMessage = (...a) => baileys.get().downloadContentFromMessage(...a)
 
 function unwrapMessage(message) {
   let current = message
@@ -51,9 +55,23 @@ function serialize(sock, msg) {
   m.chat = msg.key.remoteJid
   m.isGroup = m.chat?.endsWith('@g.us')
   m.isNewsletter = m.chat?.endsWith('@newsletter')
-  m.sender = m.fromMe
-    ? jidNormalizedUser(sock.user.id)
-    : jidNormalizedUser(m.isGroup ? msg.key.participant || msg.participant : msg.key.remoteJid)
+  // WhatsApp now hides numbers behind @lid ids. Keep every id we know for the sender
+  // (raw + alternate) so owner/admin checks keep working.
+  const rawSender = m.fromMe
+    ? sock.user.id
+    : m.isGroup
+      ? msg.key.participant || msg.participant
+      : msg.key.remoteJid
+  const altSender = m.isGroup ? msg.key.participantAlt : msg.key.remoteJidAlt
+  const pnSender = [altSender, rawSender].find((j) => j && String(j).endsWith('@s.whatsapp.net'))
+  m.sender = jidNormalizedUser(pnSender || rawSender || '')
+  m.senderIds = [
+    ...new Set(
+      [rawSender, altSender, m.fromMe ? sock.user?.lid : null]
+        .filter(Boolean)
+        .map((j) => jidNormalizedUser(j))
+    )
+  ]
   m.pushName = msg.pushName || 'User'
   m.messageTimestamp = msg.messageTimestamp
   m.broadcast = msg.broadcast
@@ -82,7 +100,9 @@ function serialize(sock, msg) {
     m.quoted = {
       key: {
         remoteJid: ctx.remoteJid || m.chat,
-        fromMe: ctx.participant ? jidNormalizedUser(ctx.participant) === jidNormalizedUser(sock.user.id) : false,
+        fromMe: ctx.participant
+          ? [sock.user?.id, sock.user?.lid].filter(Boolean).map((j) => jidNormalizedUser(j)).includes(jidNormalizedUser(ctx.participant))
+          : false,
         id: ctx.stanzaId,
         participant: ctx.participant
       },
@@ -111,7 +131,10 @@ function serialize(sock, msg) {
   m.download = async () => fn.downloadMediaMessage(m)
   m.reply = (text, options = {}) => {
     if (text && typeof text === 'object') return sock.sendMessage(m.chat, text, { quoted: msg, ...options })
-    return sock.sendMessage(m.chat, { text: String(text ?? '') }, { quoted: msg, ...options })
+    const { mentions, ...rest } = options || {}
+    const content = { text: String(text ?? '') }
+    if (mentions) content.mentions = mentions
+    return sock.sendMessage(m.chat, content, { quoted: msg, ...rest })
   }
   m.react = (emoji) => sock.sendMessage(m.chat, { react: { text: emoji, key: m.key } })
   m.send = (content, options = {}) => sock.sendMessage(m.chat, content, { quoted: msg, ...options })

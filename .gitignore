@@ -114,6 +114,9 @@
 # WhatsApp session credentials
 session/*
 !session/.gitkeep
+sessions/
+database.json
+config.local.json
 
 # Temporary files
 *.tmp
