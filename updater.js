@@ -18,6 +18,7 @@ async function latest() {
 function runNpm() {
   return new Promise((resolve, reject) => {
     execFile('npm', ['install', '--omit=dev', '--no-audit', '--no-fund'], { cwd: root, timeout: 5 * 60 * 1000 }, (err, stdout, stderr) => {
+      require('./sys').clearSafe().catch(() => {})
       if (err) reject(new Error(String(stderr || err.message).slice(-300)))
       else resolve()
     })

@@ -50,25 +50,56 @@ function load() {
 let data = load()
 
 let timer = null
+let timerAt = 0
+let writing = false
+let dirty = false
+const tmpPath = file + '.tmp'
 
-function save() {
+function flush() {
+  if (!dirty && !timer) return
   if (timer) {
     clearTimeout(timer)
     timer = null
   }
-  fs.writeFileSync(file, JSON.stringify(data, null, 2))
+  dirty = false
+  try {
+    fs.writeFileSync(tmpPath, JSON.stringify(data))
+    fs.renameSync(tmpPath, file)
+  } catch {}
 }
 
-// for busy writes (xp, contacts): one disk write every few seconds instead of every message
-function saveSoon(delay = 4000) {
-  if (timer) return
+async function writeNow() {
+  if (writing) {
+    dirty = true
+    return
+  }
+  writing = true
+  dirty = false
+  try {
+    await fs.promises.writeFile(tmpPath, JSON.stringify(data))
+    await fs.promises.rename(tmpPath, file)
+  } catch {}
+  writing = false
+  if (dirty) schedule(500)
+}
+
+function schedule(delay) {
+  dirty = true
+  const at = Date.now() + delay
+  if (timer && timerAt <= at) return
+  if (timer) clearTimeout(timer)
+  timerAt = at
   timer = setTimeout(() => {
     timer = null
-    try {
-      fs.writeFileSync(file, JSON.stringify(data, null, 2))
-    } catch {}
+    writeNow()
   }, delay)
 }
+
+// Writes never block the bot: they are batched and done in the background.
+const save = () => schedule(300)
+const saveSoon = (delay = 4000) => schedule(delay)
+
+process.on('exit', flush)
 
 module.exports = {
   get: () => data,
@@ -78,6 +109,7 @@ module.exports = {
   },
   save,
   saveSoon,
+  flush,
   reload() {
     data = load()
     return data

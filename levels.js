@@ -32,7 +32,7 @@ async function onMessage(sock, m) {
     db.gxp[m.chat] = db.gxp[m.chat] || {}
     db.gxp[m.chat][num] = (db.gxp[m.chat][num] || 0) + gain
   }
-  store.saveSoon()
+  store.saveSoon(60000)
 
   const after = levelOf(u.xp)
   if (after > before && m.isGroup && store.get().levelup?.[m.chat]) {

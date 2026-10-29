@@ -16,6 +16,10 @@ if (!fs.existsSync(path.join(__dirname, 'node_modules', '@whiskeysockets'))) {
   } catch (err) {
     console.error('[Gideon] npm install failed:', err.message)
   }
+  try {
+    fs.rmSync(path.join(require('os').homedir(), '.npm'), { recursive: true, force: true })
+    fs.rmSync(path.join(__dirname, '.npm'), { recursive: true, force: true })
+  } catch {}
 }
 
 function run() {

@@ -11,6 +11,7 @@ const fn = require('./functions')
 const store = require('./store')
 const updater = require('./updater')
 const reminders = require('./reminders')
+const sys = require('./sys')
 const { styledContent, box, contentToMessage } = require('./style')
 const { sendButtons } = require('./buttons')
 
@@ -50,10 +51,10 @@ function prepareMainSession() {
 // ------------------------------------------------------------------ one bot
 function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCode = null, onPairFail = null }) {
   const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 120, useClones: false })
-  const messageCache = new NodeCache({ stdTTL: 3600, checkperiod: 120, useClones: false })
-  const sentMessageCache = new NodeCache({ stdTTL: 3600, checkperiod: 120, useClones: false })
+  const messageCache = new NodeCache({ stdTTL: 1800, checkperiod: 300, useClones: false })
+  const sentMessageCache = new NodeCache({ stdTTL: 1800, checkperiod: 300, useClones: false })
   const processedIds = new NodeCache({ stdTTL: 300, checkperiod: 60, useClones: false })
-  const groupCache = new NodeCache({ stdTTL: 120, checkperiod: 60, useClones: false })
+  const groupCache = new NodeCache({ stdTTL: 300, checkperiod: 120, useClones: false })
 
   const ctl = { id, isSub, sock: null, sessionDir, stopped: false, startedAt: Date.now() }
   let retries = 0
@@ -79,7 +80,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
     if (!list.includes(jid)) {
       list.push(jid)
       if (list.length > 1000) list.shift()
-      store.saveSoon()
+      store.saveSoon(60000)
     }
   }
 
@@ -192,8 +193,20 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
       msgRetryCounterCache,
       generateHighQualityLinkPreview: false,
       syncFullHistory: false,
+      shouldSyncHistoryMessage: () => false,
       markOnlineOnConnect: !isSub && config.alwaysOnline && !ghost,
-      cachedGroupMetadata: async (jid) => groupCache.get(jid),
+      // serve group info from cache, and fill the cache on a miss, so replying in a group
+      // does not make WhatsApp look the group up again every single time
+      cachedGroupMetadata: async (jid) => {
+        if (!String(jid).endsWith('@g.us')) return undefined
+        const cached = groupCache.get(jid)
+        if (cached) return cached
+        try {
+          return await ctl.sock?.groupMetadata(jid)
+        } catch {
+          return undefined
+        }
+      },
       getMessage: async (key) => readCachedMessage(key) || undefined
     })
     ctl.sock = sock
@@ -280,7 +293,8 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
       if (type !== 'notify' && type !== 'append') return
       for (const msg of messages) {
-        if (msg.key?.id && msg.message) cacheMessage(msg.key, msg.message)
+        // statuses are never needed again, caching them only fills memory
+        if (msg.key?.remoteJid !== 'status@broadcast' && msg.key?.id && msg.message) cacheMessage(msg.key, msg.message)
 
         if (msg.key?.remoteJid === 'status@broadcast') {
           if (isSub || msg.key.fromMe) continue
@@ -501,6 +515,13 @@ function boot() {
   manager.startSaved()
   reminders.start(manager)
   setInterval(() => updater.notify(manager), 6 * 60 * 60 * 1000)
+  const tellOwner = async (text) => {
+    const main = manager.get('main')
+    if (main?.sock?.user) await main.sock.sendMessage(main.sock.getOwnerJid(), { text })
+  }
+  setTimeout(() => sys.guardDisk(tellOwner), 90 * 1000)
+  setInterval(() => sys.guardDisk(tellOwner), 60 * 60 * 1000)
+  setInterval(() => sys.sweepTmp(), 10 * 60 * 1000)
 }
 
 module.exports = { manager, boot }

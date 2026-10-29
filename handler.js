@@ -153,7 +153,6 @@ async function handleMessage(sock, msg) {
       }
     }
 
-    console.log(`[in] fromMe=${m.fromMe} chat=${m.chat} body=${JSON.stringify(m.body.slice(0, 80))}`)
     await afkCheck(sock, m)
     const parsed = parseCommand(m.body)
     const command = parsed ? getCommand(parsed.cmd) : null
@@ -171,6 +170,9 @@ async function handleMessage(sock, msg) {
 
     if (command.owner && !m.isOwner) {
       return m.reply('This command is owner only.')
+    }
+    if (command.dangerous && config.ownerIsDefault && !m.fromMe) {
+      return m.reply('For safety this command only works from the bot account itself until you set your own owner number in config.local.json (see README).')
     }
     if (command.owner && sock.isSub && !command.subSafe) {
       return m.reply('This command is only available on the main Gideon bot.')

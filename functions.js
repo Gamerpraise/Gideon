@@ -206,12 +206,17 @@ function isInList(list = [], ids) {
 }
 
 // Try to turn a @lid into a phone jid using Baileys' own LID map (v7).
+const pnCache = new Map()
 async function resolvePN(sock, jid) {
   try {
     if (!jid || !String(jid).endsWith('@lid')) return jid
+    if (pnCache.has(jid)) return pnCache.get(jid)
     const pn = await sock.signalRepository?.lidMapping?.getPNForLID?.(jid)
     if (!pn) return jid
-    return String(pn).includes('@') ? pn : `${pn}@s.whatsapp.net`
+    const full = String(pn).includes('@') ? pn : `${pn}@s.whatsapp.net`
+    if (pnCache.size > 5000) pnCache.clear()
+    pnCache.set(jid, full)
+    return full
   } catch {
     return jid
   }
@@ -222,7 +227,9 @@ function bytesToSize(bytes) {
 }
 
 function tmpFile(ext = 'bin') {
-  return path.join(__dirname, `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`)
+  const dir = path.join(__dirname, 'tmp')
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return path.join(dir, `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`)
 }
 
 function saveTmp(buffer, ext) {

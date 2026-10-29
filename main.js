@@ -4,4 +4,12 @@ const { boot } = require('./bot')
 process.on('uncaughtException', (err) => console.error('[uncaught]', err))
 process.on('unhandledRejection', (err) => console.error('[unhandled]', err))
 
+const store = require('./store')
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, () => {
+    store.flush()
+    process.exit(0)
+  })
+}
+
 boot()
