@@ -1,0 +1,40 @@
+{
+  "public": true,
+  "owners": [
+    "2348057940822"
+  ],
+  "banned": [],
+  "welcome": {},
+  "goodbye": {},
+  "antilink": {},
+  "antitoxic": {},
+  "autosticker": {},
+  "mute": {},
+  "antidelete": true,
+  "afk": {},
+  "warns": {},
+  "prefix": null,
+  "settings": {},
+  "ghost": false,
+  "ghostBackup": null,
+  "users": {},
+  "gxp": {},
+  "levelup": {},
+  "antibadword": {},
+  "antispam": {},
+  "reminders": [],
+  "contacts": {},
+  "followed": {},
+  "autobio": {
+    "enabled": false,
+    "text": "{bot} online • {time} • {date}"
+  },
+  "updateSha": null,
+  "updateNotified": null,
+  "autoreply": {
+    "enabled": false,
+    "text": "Hi {name}, I am not available right now. I will reply as soon as I can.",
+    "keywords": {},
+    "cooldownMin": 60
+  }
+}
