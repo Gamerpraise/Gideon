@@ -50,7 +50,14 @@ async function sendButtons(sock, jid, text, extra = {}) {
 
   if (mode === 'native') {
     try {
-      const { proto, generateWAMessageFromContent } = baileys.get()
+      const B = baileys.get()
+      const { proto, generateWAMessageFromContent } = B
+      // optional picture on top of the message (one single message: image + text + buttons)
+      let header = { title: '', subtitle: '', hasMediaAttachment: false }
+      if (extra.image) {
+        const media = await B.generateWAMessageContent({ image: extra.image }, { upload: sock.waUploadToServer })
+        header = { title: '', subtitle: '', hasMediaAttachment: true, imageMessage: media.imageMessage }
+      }
       const msg = generateWAMessageFromContent(
         jid,
         {
@@ -60,7 +67,7 @@ async function sendButtons(sock, jid, text, extra = {}) {
               interactiveMessage: proto.Message.InteractiveMessage.create({
                 body: { text: body },
                 footer: { text: footer },
-                header: { title: '', subtitle: '', hasMediaAttachment: false },
+                header: proto.Message.InteractiveMessage.Header.create(header),
                 nativeFlowMessage: { buttons: toNativeButtons(buttons), messageParamsJson: '' }
               })
             }
