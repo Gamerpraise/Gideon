@@ -1,79 +1,63 @@
-// Auto-reply that answers like the owner, using chats exported into the /reply folder (see replyengine.js).
-// Main Gideon account only. Replies are plain text: no box, no theme, no watermark, so it looks human.
-const store = require('./store')
-const fn = require('./functions')
-const engine = require('./replyengine')
+// Auto-reply that answers like you. It learns from WhatsApp chats exported into the "reply" folder.
+//   .autoreply on|off     switch it (main Gideon account only)
+//   .replies              what it has learned
+//   .reloadreply          re-read the reply folder after adding exports
+//   .replytest <text>     see how it would answer
+const autoreply = require('../autoreply')
+const engine = require('../replyengine')
 
-let loaded = false
-const bursts = new Map() // chat -> [timestamps] (stops bot-to-bot loops)
-const busy = new Set()
-
-function ensureLoaded() {
-  if (!loaded) {
-    engine.load()
-    loaded = true
-  }
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
-function eligible(sock, m) {
-  const ar = store.get().autoreply
-  if (sock.isSub || !ar || !ar.enabled) return false
-  if (m.fromMe || m.isGroup || m.isNewsletter) return false
-  if (m.sender?.endsWith('@broadcast')) return false
-  const ids = [m.sender, ...(m.senderIds || [])]
-  if (m.isOwner || fn.isOwner(ids)) return false
-  const ts = Number(m._msg?.messageTimestamp || m.messageTimestamp || 0)
-  if (ts && Date.now() / 1000 - ts > 120) return false // ignore old messages after a reconnect
-  const now = Date.now()
-  const list = (bursts.get(m.chat) || []).filter((t) => now - t < 2 * 60000)
-  if (list.length >= 6) return false
-  bursts.set(m.chat, list)
-  return true
-}
-
-async function send(sock, m, lines) {
-  busy.add(m.chat)
-  try {
-    await sleep(1200 + Math.random() * 2500) // "reading" time
-    await sock.sendPresenceUpdate('composing', m.chat).catch(() => {})
-    await sleep(engine.typingDelay(lines))
-    for (let i = 0; i < lines.length; i++) {
-      await sock.sendMessage(m.chat, { text: lines[i] }, { skipStyle: true })
-      bursts.get(m.chat)?.push(Date.now())
-      if (i < lines.length - 1) {
-        await sock.sendPresenceUpdate('composing', m.chat).catch(() => {})
-        await sleep(900 + Math.random() * 1500)
-      }
+module.exports = [
+  {
+    name: 'autoreply',
+    aliases: ['ar'],
+    desc: 'Auto-reply like you from exported chats: on/off',
+    category: 'owner',
+    owner: true,
+    async run(sock, m, { args, store }) {
+      const mode = (args[0] || '').toLowerCase()
+      const db = store.get()
+      if (!['on', 'off'].includes(mode)) return m.reply(`Example: .autoreply on | .autoreply off\nNow: ${db.autoreply?.enabled ? 'on' : 'off'}\n\nPut exported chats in the "reply" folder, then .reloadreply`)
+      db.autoreply = { ...db.autoreply, enabled: mode === 'on' }
+      store.save()
+      const info = autoreply.reload()
+      await m.reply(`Auto-reply ${mode}.${mode === 'on' ? `\nLearned ${info.pairs} replies from ${info.files.length} chat file(s).${info.pairs ? '' : '\nNo exports found yet, so it will only say "hmm 🤔". Add .txt exports to the reply folder.'}` : ''}`)
     }
-    await sock.sendPresenceUpdate('paused', m.chat).catch(() => {})
-  } finally {
-    busy.delete(m.chat)
+  },
+  {
+    name: 'replies',
+    aliases: ['replylist'],
+    desc: 'Show what the auto-reply has learned',
+    category: 'owner',
+    owner: true,
+    async run(sock, m, { store }) {
+      autoreply.reload()
+      const info = engine.info()
+      const files = info.files.map((f) => `- ${f.name}: ${f.pairs} replies`).join('\n') || '- none'
+      const skipped = info.skipped.length ? `\n\nCould not tell which side is you in:\n${info.skipped.map((f) => `- ${f}`).join('\n')}\nCreate reply/me.txt with your name as shown in the export.` : ''
+      await m.reply(`Auto-reply: ${store.get().autoreply?.enabled ? 'on' : 'off'}\nLearned: ${info.pairs} replies\n\n${files}${skipped}`)
+    }
+  },
+  {
+    name: 'reloadreply',
+    desc: 'Re-read the reply folder',
+    category: 'owner',
+    owner: true,
+    async run(sock, m) {
+      const info = autoreply.reload()
+      await m.reply(`Reloaded. ${info.pairs} replies from ${info.files.length} file(s).`)
+    }
+  },
+  {
+    name: 'replytest',
+    desc: 'Test how the auto-reply would answer: .replytest hello',
+    category: 'owner',
+    owner: true,
+    async run(sock, m, { text }) {
+      if (!text) return m.reply('Example: .replytest how far')
+      autoreply.reload()
+      const r = engine.reply(`test:${m.chat}`, text)
+      const top = engine.explain(text).map((c) => `- "${c.prompt.slice(0, 40)}" -> ${c.reply.slice(0, 50)} (${(c.score * 100).toFixed(0)}%)`).join('\n') || '- nothing learned yet'
+      await m.reply(`It would say:\n${r.lines.join('\n')}\n\nMatch: ${r.kind}${r.kind === 'match' ? ` (${(r.score * 100).toFixed(0)}%)` : ''}\n\nClosest learned messages:\n${top}`)
+    }
   }
-}
-
-// text messages that are not commands
-async function check(sock, m) {
-  if (!m.body || !eligible(sock, m) || busy.has(m.chat)) return false
-  ensureLoaded()
-  const result = engine.reply(m.chat, m.body)
-  await send(sock, m, result.lines)
-  return true
-}
-
-// voice notes
-async function checkVoice(sock, m) {
-  if (m.mtype !== 'audioMessage' || !m.msg?.ptt) return false
-  if (!eligible(sock, m) || busy.has(m.chat)) return false
-  ensureLoaded()
-  await send(sock, m, [engine.voiceReply()])
-  return true
-}
-
-function reload() {
-  loaded = true
-  return engine.load()
-}
-
-module.exports = { check, checkVoice, reload }
+]
