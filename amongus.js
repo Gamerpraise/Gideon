@@ -619,4 +619,38 @@ async function cmdExit(sock, m) {
   await m.reply(`🛑 *Among Us ended by the host.*${reveal}\nAll names have been wiped.`)
 }
 
-module.exports = { cmdJoin, cmdName, cmdSettings, cmdStart, cmdKill, cmdEmergency, cmdVote, cmdRole, cmdPlayers, cmdLeave, cmdExit }
+async function cmdInvite(sock, m, { args, text }) {
+  if (guard.groupOnly(m)) return
+  const target = m.mentionedJid?.[0] || (args[0] ? fn.toJid(args[0]) : null)
+  if (!target) return m.reply(`Tag the person or give their number.\nExample: ${P()}inviteau @user  or  ${P()}inviteau 2348012345678`)
+  if (fn.cleanJid(target) === fn.cleanJid(m.sender)) return m.reply("You can't invite yourself, just join with " + P() + 'amongus')
+
+  let link
+  try {
+    const code = await sock.groupInviteCode(m.chat)
+    link = `https://chat.whatsapp.com/${code}`
+  } catch {
+    return m.reply("I need to be admin here to fetch the group's invite link.")
+  }
+
+  const meta = await sock.groupMetadata(m.chat).catch(() => null)
+  const groupName = meta?.subject || 'the group'
+  const inviter = m.pushName || 'Someone'
+
+  try {
+    await sock.sendMessage(target, {
+      text:
+        `🛸 *AMONG US INVITE*\n\n` +
+        `${inviter} invited you to play Among Us in *${groupName}*! 🔪🧑‍🚀\n\n` +
+        `Join the group here:\n${link}\n\n` +
+        `Already in the group? Just tap it to open the chat.\n\n` +
+        `Once you're in, run *${P()}amongus* to join the game. If a round is already running, wait for the next one.`
+    })
+  } catch {
+    return m.reply(`Couldn't DM @${fn.cleanJid(target)}. They may not have a DM open with me yet.`, { mentions: [target] })
+  }
+
+  await sock.sendMessage(m.chat, { text: `📨 Invite sent to @${fn.cleanJid(target)}!`, mentions: [target] })
+}
+
+module.exports = { cmdJoin, cmdName, cmdSettings, cmdStart, cmdKill, cmdEmergency, cmdVote, cmdRole, cmdPlayers, cmdLeave, cmdExit, cmdInvite }
