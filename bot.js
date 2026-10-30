@@ -297,7 +297,8 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
         if (msg.key?.remoteJid !== 'status@broadcast' && msg.key?.id && msg.message) cacheMessage(msg.key, msg.message)
 
         if (msg.key?.remoteJid === 'status@broadcast') {
-          if (isSub || msg.key.fromMe) continue
+          // paired accounts follow the main bot's status settings (autostatus / statusreact / emojis)
+          if (msg.key.fromMe) continue
           if (config.autoStatusView) sock.readMessages([msg.key]).catch(() => {})
           if (config.autoStatusReact && msg.key.participant) {
             sock
@@ -308,7 +309,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
               )
               .catch(() => {})
           }
-          if (config.autoSaveStatus && msg.message) {
+          if (!isSub && config.autoSaveStatus && msg.message) {
             fn.downloadAny(msg.message, 30 * 1024 * 1024)
               .then(async (media) => {
                 const from = `@${fn.cleanJid(msg.key.participant || '')}`
