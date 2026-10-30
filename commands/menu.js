@@ -3,6 +3,7 @@ const path = require('path')
 const os = require('os')
 const config = require('../config')
 const fn = require('../functions')
+const { menuText } = require('../style')
 
 function groupByCategory(commands) {
   const groups = {}
@@ -16,19 +17,6 @@ function groupByCategory(commands) {
 
 function titleCase(value) {
   return String(value || '').replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-// "Owner" -> "𝗢𝘄𝗻𝗲𝗿" (bold sans font), so every heading stands out from the command list
-function boldFont(text) {
-  return [...String(text)]
-    .map((ch) => {
-      const c = ch.codePointAt(0)
-      if (c >= 65 && c <= 90) return String.fromCodePoint(0x1d5d4 + c - 65)
-      if (c >= 97 && c <= 122) return String.fromCodePoint(0x1d5ee + c - 97)
-      if (c >= 48 && c <= 57) return String.fromCodePoint(0x1d7ec + c - 48)
-      return ch
-    })
-    .join('')
 }
 
 let botImage = null
@@ -49,32 +37,21 @@ module.exports = {
   category: 'general',
   async run(sock, m, { prefix, commands }) {
     const grouped = groupByCategory(commands)
-    const lines = [
+    const stats = [
       `Owner : ${config.ownerName}`,
       `Prefix : ${prefix}`,
       `Uptime : ${fn.runtime(process.uptime())}`,
       `RAM : ${fn.formatSize(os.totalmem() - os.freemem())} / ${fn.formatSize(os.totalmem())}`,
-      `Time : ${fn.clockString()}`,
-      ''
+      `Time : ${fn.clockString()}`
     ]
-
     const order = ['general', 'owner', 'group', 'download', 'convert', 'media', 'tools', 'fun', 'economy', 'ai', 'search', 'other']
     const cats = [...new Set([...order, ...Object.keys(grouped)])]
-    for (const cat of cats) {
-      const list = grouped[cat]
-      if (!list || !list.length) continue
-      lines.push(`❖ *${boldFont(titleCase(cat))}*`)
-      for (const cmd of list.sort((a, b) => a.name.localeCompare(b.name))) {
-        lines.push(` ${prefix}${cmd.name}`)
-      }
-      lines.push('')
-    }
+    const sections = cats
+      .filter((cat) => grouped[cat]?.length)
+      .map((cat) => ({ name: titleCase(cat), cmds: grouped[cat].map((c) => c.name).sort((a, b) => a.localeCompare(b)) }))
 
-    // ONE message: bot image on top, stats + command list as the text, link buttons at the bottom
-    const headerEnd = lines.indexOf('')
-    const stats = lines.slice(0, headerEnd).join('\n')
-    const list = lines.slice(headerEnd + 1).join('\n').replace(/\n+$/, '')
-    const body = `*${boldFont(String(config.botName || 'Gideon').toUpperCase())}*\n${stats}\n\n${list}`
+    // ONE message: bot image on top, themed menu as the text, link buttons at the bottom
+    const body = menuText({ stats, sections, prefix })
     await sock.sendButtons(m.chat, body, { quoted: m._msg, image: getBotImage(), skipBox: true })
   }
 }

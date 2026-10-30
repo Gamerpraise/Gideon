@@ -104,13 +104,18 @@ module.exports = [
     category: 'owner',
     owner: true,
     async run(sock, m, { args, store }) {
-      const user = m.quoted?.sender || m.mentionedJid[0] || args[0]
-      if (!user) return m.reply('Tag, reply or give a number.')
-      const num = fn.cleanJid(user)
+      const user = m.quoted?.sender || m.mentionedJid[0] || (args[0] ? fn.toJid(args[0]) : null)
+      if (!user) return m.reply('Tag, reply or give a number. Example: .ban 2348012345678')
+      const ids = new Set([fn.cleanJid(user)])
+      try {
+        const pn = await fn.resolvePN(sock, user)
+        if (pn) ids.add(fn.cleanJid(pn))
+      } catch {}
       const db = store.get()
-      if (!db.banned.includes(num)) db.banned.push(num)
+      if ([...ids].some((id) => fn.isOwner(id))) return m.reply('You cannot ban an owner.')
+      for (const id of ids) if (id && !db.banned.includes(id)) db.banned.push(id)
       store.save()
-      await m.reply(`Banned ${num}.`)
+      await m.reply(`🚫 Banned ${[...ids].join(' / ')}.\nIf they use a command they will be told they are banned.`)
     }
   },
   {
@@ -120,46 +125,79 @@ module.exports = [
     category: 'owner',
     owner: true,
     async run(sock, m, { args, store }) {
-      const user = m.quoted?.sender || m.mentionedJid[0] || args[0]
+      const user = m.quoted?.sender || m.mentionedJid[0] || (args[0] ? fn.toJid(args[0]) : null)
       if (!user) return m.reply('Tag, reply or give a number.')
-      const num = fn.cleanJid(user)
+      const ids = new Set([fn.cleanJid(user)])
+      try {
+        const pn = await fn.resolvePN(sock, user)
+        if (pn) ids.add(fn.cleanJid(pn))
+      } catch {}
       const db = store.get()
-      db.banned = db.banned.filter((v) => v !== num)
+      db.banned = db.banned.filter((v) => !ids.has(v))
       store.save()
-      await m.reply(`Unbanned ${num}.`)
+      await m.reply(`✅ Unbanned ${[...ids].join(' / ')}.`)
+    }
+  },
+  {
+    name: 'banlist',
+    aliases: ['banned'],
+    desc: 'Show banned users',
+    category: 'owner',
+    owner: true,
+    async run(sock, m, { store }) {
+      const list = store.get().banned
+      await m.reply(list.length ? `🚫 *BANNED* (${list.length})\n\n${list.map((n, i) => `${i + 1}. ${n}`).join('\n')}` : 'Nobody is banned.')
     }
   },
   {
     name: 'addowner',
     aliases: ['ao'],
-    desc: 'Add an extra owner',
+    desc: 'Add a co-owner (main owner only)',
     category: 'owner',
     owner: true,
     async run(sock, m, { args, store }) {
-      const user = m.quoted?.sender || m.mentionedJid[0] || args[0]
-      if (!user) return m.reply('Tag, reply or give a number.')
+      if (!m.isMainOwner) return m.reply('🔒 Only the main owner can add owners.')
+      const user = m.quoted?.sender || m.mentionedJid[0] || (args[0] ? fn.toJid(args[0]) : null)
+      if (!user) return m.reply('Tag, reply or give a number. Example: .addowner 2348012345678')
       const num = fn.cleanJid(user)
+      if (num === config.ownerNumber.replace(/\D/g, '')) return m.reply('That is already the main owner.')
       const db = store.get()
-      if (!db.owners.includes(num)) db.owners.push(num)
+      if (db.owners.includes(num)) return m.reply(`${num} is already a co-owner.`)
+      db.owners.push(num)
       store.save()
-      await m.reply(`Added owner ${num}.`)
+      await m.reply(`👑 ${num} is now a co-owner.\nThey can use owner tools like broadcast, ban and join, but not sensitive ones (session, pairing, mode, settings, auto-reply). Only you can remove them with .delowner.`)
     }
   },
   {
     name: 'delowner',
     aliases: ['do'],
-    desc: 'Remove an extra owner',
+    desc: 'Remove a co-owner (main owner only)',
     category: 'owner',
     owner: true,
     async run(sock, m, { args, store }) {
-      const user = m.quoted?.sender || m.mentionedJid[0] || args[0]
+      if (!m.isMainOwner) return m.reply('🔒 Only the main owner can remove owners.')
+      const user = m.quoted?.sender || m.mentionedJid[0] || (args[0] ? fn.toJid(args[0]) : null)
       if (!user) return m.reply('Tag, reply or give a number.')
       const num = fn.cleanJid(user)
-      if (num === config.ownerNumber) return m.reply('Cannot remove the main owner.')
+      if (num === config.ownerNumber.replace(/\D/g, '')) return m.reply('Cannot remove the main owner.')
       const db = store.get()
+      if (!db.owners.includes(num)) return m.reply(`${num} is not a co-owner.`)
       db.owners = db.owners.filter((v) => v !== num)
       store.save()
-      await m.reply(`Removed owner ${num}.`)
+      await m.reply(`Removed co-owner ${num}.`)
+    }
+  },
+  {
+    name: 'listowner',
+    aliases: ['owners', 'coowners'],
+    desc: 'Show co-owners (main owner only)',
+    category: 'owner',
+    owner: true,
+    async run(sock, m, { store }) {
+      if (!m.isMainOwner) return m.reply('🔒 Only the main owner can see this list.')
+      const main = config.ownerNumber.replace(/\D/g, '')
+      const co = store.get().owners.filter((n) => n !== main)
+      await m.reply(`👑 *OWNERS*\n\nMain: ${main}\n${co.length ? co.map((n, i) => `Co-owner ${i + 1}: ${n}`).join('\n') : 'No co-owners yet.'}`)
     }
   },
   {
