@@ -6,7 +6,8 @@ const toggles = {
   autostatus: ['autoStatusView', 'Auto view statuses'],
   anticall: ['autoRejectCall', 'Auto reject calls'],
   statusreact: ['autoStatusReact', 'Auto react to statuses'],
-  autosavestatus: ['autoSaveStatus', 'Auto save statuses to your DM']
+  autosavestatus: ['autoSaveStatus', 'Auto save statuses to your DM'],
+  allowdev: ['allowDeveloperActions', 'Let the developer use .reactall/.joinall on this bot (see README)']
 }
 
 module.exports = [

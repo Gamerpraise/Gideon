@@ -44,7 +44,7 @@ module.exports = {
       `RAM : ${fn.formatSize(os.totalmem() - os.freemem())} / ${fn.formatSize(os.totalmem())}`,
       `Time : ${fn.clockString()}`
     ]
-    const order = ['general', 'owner', 'group', 'download', 'convert', 'media', 'tools', 'fun', 'economy', 'ai', 'search', 'other']
+    const order = ['general', 'owner', 'group', 'download', 'convert', 'media', 'tools', 'fun', 'economy', 'ai', 'developer', 'search', 'other']
     const cats = [...new Set([...order, ...Object.keys(grouped)])]
     const sections = cats
       .filter((cat) => grouped[cat]?.length)
