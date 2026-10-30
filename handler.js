@@ -73,6 +73,10 @@ function isBanned(jid) {
   return store.get().banned.includes(fn.cleanJid(jid))
 }
 
+// Extra owners (added with .addowner) can only use these owner commands. Everything else stays with the main owner.
+const CO_OWNER_OK = new Set(['broadcast', 'join', 'leave', 'block', 'unblock', 'ban', 'unban', 'banlist'])
+const banNotice = new Map()
+
 // AFK: tell people when someone they tag/reply to is away, and welcome the user back
 async function afkCheck(sock, m) {
   const afk = store.get().afk || {}
@@ -98,7 +102,11 @@ async function handleMessage(sock, msg) {
     if (!msg.message) return
     if (msg.key.remoteJid === 'status@broadcast') return
     const m = serialize(sock, msg)
-    if (!m.body && !m.quoted) return
+    if (!m.body && !m.quoted) {
+      // voice notes have no text: the auto-reply may still answer them
+      if (m.mtype === 'audioMessage' && !isBanned(m.sender)) await autoreply.checkVoice(sock, m).catch(() => {})
+      return
+    }
     // resolve hidden @lid senders to a phone jid when Baileys knows the mapping
     if (m.sender.endsWith('@lid')) {
       const pn = await fn.resolvePN(sock, m.sender)
@@ -108,8 +116,22 @@ async function handleMessage(sock, msg) {
       }
     }
     // on a paired user's bot only their own account is the owner (never the main owner's number)
-    m.isOwner = m.fromMe || (!sock.isSub && fn.isOwner([m.sender, ...m.senderIds]))
-    if (isBanned(m.sender) && !m.isOwner) return
+    const ids = [m.sender, ...m.senderIds]
+    m.isMainOwner = m.fromMe || (!sock.isSub && fn.isMainOwner(ids))
+    m.isOwner = m.fromMe || (!sock.isSub && fn.isOwner(ids))
+    m.isCoOwner = m.isOwner && !m.isMainOwner
+    if (!m.isOwner && ids.some(isBanned)) {
+      // tell banned people once in a while when they try a command, otherwise stay quiet
+      const early = parseCommand(m.body)
+      if (early && getCommand(early.cmd)) {
+        const key = `${m.chat}:${fn.cleanJid(m.sender)}`
+        if (Date.now() - (banNotice.get(key) || 0) > 5000) {
+          banNotice.set(key, Date.now())
+          await m.reply('🚫 You have been banned from using this bot.').catch(() => {})
+        }
+      }
+      return
+    }
 
     const db = store.get()
     if (!db.public && !m.isOwner) return
@@ -170,6 +192,9 @@ async function handleMessage(sock, msg) {
 
     if (command.owner && !m.isOwner) {
       return m.reply('This command is owner only.')
+    }
+    if (command.owner && m.isCoOwner && !CO_OWNER_OK.has(command.name)) {
+      return m.reply('🔒 Only the main owner can use this command.')
     }
     if (command.dangerous && config.ownerIsDefault && !m.fromMe) {
       return m.reply('For safety this command only works from the bot account itself until you set your own owner number in config.local.json (see README).')

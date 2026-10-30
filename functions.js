@@ -59,6 +59,12 @@ function isOwner(jid, extraOwners = []) {
   return owners.has(num)
 }
 
+// The real owner only (config number), not the extra owners added with .addowner
+function isMainOwner(jid) {
+  if (Array.isArray(jid)) return jid.some((j) => isMainOwner(j))
+  return cleanJid(jid) === config.ownerNumber.replace(/\D/g, '')
+}
+
 function formatSize(bytes) {
   if (!bytes) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -316,6 +322,7 @@ module.exports = {
   cleanJid,
   toJid,
   isOwner,
+  isMainOwner,
   formatSize,
   fetchJson,
   getBuffer,

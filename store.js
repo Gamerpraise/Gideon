@@ -18,6 +18,8 @@ const defaults = {
   afk: {},
   warns: {},
   prefix: null,
+  theme: 1,
+  callWarns: {},
   settings: {},
   ghost: false,
   ghostBackup: null,
@@ -32,7 +34,7 @@ const defaults = {
   autobio: { enabled: false, text: '{bot} online • {time} • {date}' },
   updateSha: null,
   updateNotified: null,
-  autoreply: { enabled: false, text: 'Hi {name}, I am not available right now. I will reply as soon as I can.', keywords: {}, cooldownMin: 60 }
+  autoreply: { enabled: false }
 }
 
 function load() {

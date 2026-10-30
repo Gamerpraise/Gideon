@@ -360,15 +360,35 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
       for (const u of updates) if (u.id) groupCache.del(u.id)
     })
 
+    // anti-call: reject, warn, and block the caller after 3 calls
     sock.ev.on('call', async (calls) => {
       if (isSub || !config.autoRejectCall) return
+      const MAX = 3
       for (const call of calls) {
-        if (call.status === 'offer') {
+        if (call.status !== 'offer' || call.isGroup) continue
+        try {
+          const from = call.from || call.chatId
+          let pn = from
           try {
-            await sock.rejectCall(call.id, call.from)
-            await sock.sendMessage(call.from, { text: `${config.botName} does not take calls.` })
+            pn = (await fn.resolvePN(sock, from)) || from
           } catch {}
-        }
+          if (fn.isOwner([from, pn])) continue // never block the owner or co-owners
+          await sock.rejectCall(call.id, from).catch(() => {})
+          const db = store.get()
+          db.callWarns = db.callWarns || {}
+          const key = fn.cleanJid(pn)
+          const count = (db.callWarns[key] || 0) + 1
+          if (count >= MAX) {
+            delete db.callWarns[key]
+            store.save()
+            await sock.sendMessage(from, { text: `🚫 ${config.botName} does not accept calls.\nYou called ${MAX} times after being warned, so you have been blocked.` })
+            await sock.updateBlockStatus(from, 'block').catch(() => sock.updateBlockStatus(pn, 'block').catch(() => {}))
+          } else {
+            db.callWarns[key] = count
+            store.save()
+            await sock.sendMessage(from, { text: `📵 ${config.botName} doesn't accept calls at the moment.\nPlease send a message instead.\n\n⚠️ Warning ${count}/${MAX}: ${MAX} calls and you will be blocked.` })
+          }
+        } catch {}
       }
     })
 
