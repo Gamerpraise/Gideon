@@ -23,6 +23,14 @@ module.exports = [
     run: au.cmdJoin
   },
   {
+    name: 'inviteau',
+    aliases: ['auinvite'],
+    desc: 'Among Us: DM someone the group invite to come play',
+    category: 'fun',
+    group: true,
+    run: au.cmdInvite
+  },
+  {
     name: 'aun',
     desc: 'Among Us: set your in-game name',
     category: 'fun',
