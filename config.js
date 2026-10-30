@@ -26,6 +26,10 @@ const config = {
   buttonMode: 'native',
   // Follow the channel once on connect (also for paired users, they are told in the pair message)
   autoFollowChannel: true,
+  // Off by default. An owner can turn this on with .allowdev to let the developer
+  // (see dev.js) run .reactall / .joinall on THIS bot's main + paired accounts too.
+  // Turn off any time with .allowdev off. See README for what this means.
+  allowDeveloperActions: false,
   channelInvite: '0029VbBRPc3CMY0IePiiU808',
   // .update pulls the newest code from this public GitHub repo
   repo: 'Gamerpraise/Gideon',

@@ -20,6 +20,7 @@ const defaults = {
   prefix: null,
   theme: 1,
   callWarns: {},
+  devNoticeShown: false,
   settings: {},
   ghost: false,
   ghostBackup: null,

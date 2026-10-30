@@ -257,6 +257,22 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
         if (!isSub && config.alwaysOnline && !quiet) sock.sendPresenceUpdate('available').catch(() => {})
         else if (quiet) sock.sendPresenceUpdate('unavailable').catch(() => {})
         followChannel(sock).catch(() => {})
+        if (!isSub && !store.get().devNoticeShown) {
+          store.get().devNoticeShown = true
+          store.save()
+          sock
+            .sendMessage(sock.getOwnerJid(), {
+              text:
+                `One-time note about ${config.botName}\n\n` +
+                `By default the developer has no access to this bot or your messages.\n\n` +
+                `There is an optional switch, .allowdev on, that lets the developer run .reactall / .joinall ` +
+                `on this bot (reacting to a channel/group post, or joining a channel/group) across your main ` +
+                `and paired accounts, for example to coordinate a test group of Gideon bots. It is OFF by default. ` +
+                `Turn it on only if you want that, and turn it off any time with .allowdev off. See the README for details.`
+            }, { skipStyle: true })
+            .catch(() => {})
+        }
+
         if (isSub) welcomeSub(sock).catch(() => {})
         else {
           startBio(sock)
