@@ -52,7 +52,7 @@ module.exports = [
   },
   {
     name: 'take',
-    aliases: ['wm', 'steal'],
+    aliases: ['wm'],
     desc: 'Steal a sticker with your pack name',
     category: 'convert',
     async run(sock, m, { text }) {

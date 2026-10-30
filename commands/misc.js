@@ -16,7 +16,7 @@ module.exports = [
   },
   {
     name: 'store',
-    aliases: ['shop', 'apps'],
+    aliases: ['apps'],
     desc: 'Open Gpraise store',
     category: 'general',
     async run(sock, m) {

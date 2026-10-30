@@ -118,7 +118,7 @@ module.exports = [
   },
   {
     name: 'slot',
-    aliases: ['slots'],
+    aliases: ['slotmachine'],
     desc: 'Play slots',
     category: 'fun',
     async run(sock, m) {

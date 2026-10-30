@@ -4,6 +4,8 @@ async function metadata(sock, m) {
   return sock.groupMetadata(m.chat)
 }
 
+const kickallPending = new Map()
+
 module.exports = [
   {
     name: 'tagall',
@@ -296,6 +298,40 @@ module.exports = [
           `Created: ${meta.creation ? new Date(meta.creation * 1000).toUTCString() : '-'}\n` +
           `Desc: ${meta.desc || '-'}`
       )
+    }
+  },
+  {
+    name: 'kickall',
+    aliases: ['removeall'],
+    desc: 'Remove every member from the group (asks to confirm)',
+    category: 'group',
+    group: true,
+    admin: true,
+    botAdmin: true,
+    dangerous: true,
+    async run(sock, m, { args, prefix }) {
+      const pending = kickallPending.get(m.chat)
+      const confirmed = (args[0] || '').toLowerCase() === 'confirm'
+      if (!confirmed || !pending || pending.by !== m.sender || Date.now() - pending.at > 60000) {
+        kickallPending.set(m.chat, { by: m.sender, at: Date.now() })
+        return m.reply(`This will remove EVERY member except me, you and the group creator.\nType ${prefix}kickall confirm within 60 seconds to continue.`)
+      }
+      kickallPending.delete(m.chat)
+      const meta = await sock.groupMetadata(m.chat)
+      const keep = new Set([m.sender, ...(m.senderIds || []), sock.user?.id, sock.user?.lid, meta.owner].filter(Boolean).map(fn.cleanJid))
+      const targets = meta.participants.filter((p) => p.admin !== 'superadmin' && ![p.id, p.lid, p.phoneNumber, p.jid].filter(Boolean).some((id) => keep.has(fn.cleanJid(id))))
+      if (!targets.length) return m.reply('There is nobody to remove.')
+      await m.reply(`Removing ${targets.length} member(s)...`)
+      let removed = 0
+      for (let i = 0; i < targets.length; i += 5) {
+        const batch = targets.slice(i, i + 5).map((p) => p.id)
+        try {
+          await sock.groupParticipantsUpdate(m.chat, batch, 'remove')
+          removed += batch.length
+        } catch {}
+        await fn.sleep(1500)
+      }
+      await m.reply(`Done. Removed ${removed} of ${targets.length} member(s).`)
     }
   },
   {

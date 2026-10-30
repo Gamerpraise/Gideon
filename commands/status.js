@@ -65,22 +65,44 @@ module.exports = [
         content = { text: body, backgroundColor: '#1a1a2e', font: 1 }
       }
 
-      // Recipients: people this account has chatted with + members of its groups
-      const list = new Set(sock.knownContacts())
-      try {
-        const groups = await sock.groupFetchAllParticipating()
-        for (const g of Object.values(groups)) {
-          for (const p of g.participants || []) {
-            const pn = p.phoneNumber || (String(p.id).endsWith('@s.whatsapp.net') ? p.id : null)
-            if (pn) list.add(pn)
+      // Recipients: people an account has chatted with + members of its groups
+      async function postFrom(account) {
+        const list = new Set(account.knownContacts())
+        try {
+          const groups = await account.groupFetchAllParticipating()
+          for (const g of Object.values(groups)) {
+            for (const p of g.participants || []) {
+              const pn = p.phoneNumber || (String(p.id).endsWith('@s.whatsapp.net') ? p.id : null)
+              if (pn) list.add(pn)
+            }
           }
-        }
-      } catch {}
-      list.add(sock.getOwnerJid())
-      const statusJidList = [...list].slice(0, 1000)
+        } catch {}
+        list.add(account.getOwnerJid())
+        const statusJidList = [...list].slice(0, 1000)
+        await account.sendMessage('status@broadcast', content, { statusJidList, skipStyle: true })
+        return statusJidList.length
+      }
 
-      await sock.sendMessage('status@broadcast', content, { statusJidList, skipStyle: true })
-      await m.reply(`Status posted (sent to ${statusJidList.length} contacts).`)
+      const reached = await postFrom(sock)
+      if (sock.isSub) return m.reply(`Status posted (sent to ${reached} contacts).`)
+
+      // main Gideon account: post on every paired account too
+      let ok = 0
+      let failed = 0
+      for (const ctl of sock.manager.listSubs()) {
+        if (!ctl.sock?.user) {
+          failed++
+          continue
+        }
+        try {
+          await fn.sleep(1500)
+          await postFrom(ctl.sock)
+          ok++
+        } catch {
+          failed++
+        }
+      }
+      await m.reply(`Status posted on the main account (${reached} contacts)` + (ok || failed ? `\nand on ${ok} paired account${ok === 1 ? '' : 's'}${failed ? ` (${failed} offline or failed)` : ''}.` : '.'))
     }
   }
 ]

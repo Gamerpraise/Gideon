@@ -4,7 +4,7 @@ const updater = require('../updater')
 // .update check    only look, do not install
 module.exports = {
   name: 'update',
-  aliases: ['upgrade', 'gitpull'],
+  aliases: ['gitpull'],
   desc: 'Owner: update the bot from GitHub',
   category: 'owner',
   owner: true,

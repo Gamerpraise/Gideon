@@ -220,13 +220,13 @@ module.exports = [
     }
   },
   {
-    name: 'crypto',
-    aliases: ['price'],
-    desc: 'Crypto price: .crypto bitcoin',
+    name: 'coinprice',
+    aliases: ['price', 'cryptoprice'],
+    desc: 'Real crypto price: .coinprice bitcoin',
     category: 'tools',
     async run(sock, m, { text, prefix }) {
       const coin = (text || '').toLowerCase().trim()
-      if (!coin) return m.reply(`Example: ${prefix}crypto bitcoin`)
+      if (!coin) return m.reply(`Example: ${prefix}coinprice bitcoin`)
       try {
         const data = await fn.fetchJson(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coin)}&vs_currencies=usd,ngn&include_24hr_change=true`)
         const p = data[coin]
