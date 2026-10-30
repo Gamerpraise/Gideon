@@ -70,16 +70,11 @@ module.exports = {
       lines.push('')
     }
 
-    // header lines go with the bot image (captions are short), the command list follows as text
+    // ONE message: bot image on top, stats + command list as the text, link buttons at the bottom
     const headerEnd = lines.indexOf('')
-    const image = getBotImage()
-    if (image) {
-      try {
-        await sock.sendMessage(m.chat, { image, caption: lines.slice(0, headerEnd).join('\n') }, { quoted: m._msg })
-        lines.splice(0, headerEnd + 1)
-      } catch {}
-    }
-    await m.reply(lines.join('\n').replace(/\n+$/, ''))
-    await sock.sendButtons(m.chat, 'Gideon links', { quoted: m._msg })
+    const stats = lines.slice(0, headerEnd).join('\n')
+    const list = lines.slice(headerEnd + 1).join('\n').replace(/\n+$/, '')
+    const body = `*${boldFont(String(config.botName || 'Gideon').toUpperCase())}*\n${stats}\n\n${list}`
+    await sock.sendButtons(m.chat, body, { quoted: m._msg, image: getBotImage(), skipBox: true })
   }
 }
