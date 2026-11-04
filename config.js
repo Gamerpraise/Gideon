@@ -41,6 +41,9 @@ const config = {
   // Leave blank on every other installation; .joinall/.reactall then just act on this bot's
   // own accounts, exactly as before.
   devPushKey: '',
+  // Signed plugins from the admin File Manager. OFF unless the host turns it on in config.local.json (see plugins.js).
+  allowPlugins: false,
+  pluginPublicKey: '',
   channelInvite: '0029VbBRPc3CMY0IePiiU808',
   // .update pulls the newest code from this public GitHub repo
   repo: 'Gamerpraise/Gideon',

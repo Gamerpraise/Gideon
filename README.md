@@ -121,3 +121,7 @@ If Gideon helps you, star the repo, subscribe on YouTube and follow the channel.
 ---
 
 Made by **Gpraise** · License MIT
+
+
+## Gideon AI platform (Premium, Command Manager, admin dashboard)
+See `docs/UPGRADE.md` (install, deploy, migration), `docs/COMMAND_CLASSIFICATION.md`, `docs/FIRESTORE_SCHEMA.md`, `docs/TESTING_REPORT.md`. The admin dashboard is served by the network server at `/admin`.

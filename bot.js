@@ -15,6 +15,7 @@ const sys = require('./sys')
 const { styledContent, box, contentToMessage } = require('./style')
 const net = require('./network')
 const devqueue = require('./devqueue')
+const premium = require('./premium')
 const { sendButtons } = require('./buttons')
 
 const logger = pino({ level: 'silent' })
@@ -137,7 +138,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
     if (bioTimer) return
     const run = async () => {
       const bio = store.get().autobio
-      if (!bio?.enabled || !sock.user) return
+      if (!bio?.enabled || !sock.user || !premium.featureAllowed('autobio')) return
       const moment = require('moment-timezone')
       const now = moment.tz(config.timezone)
       const text = String(bio.text)
@@ -281,6 +282,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
         else if (quiet) sock.sendPresenceUpdate('unavailable').catch(() => {})
         followChannel(sock).catch(() => {})
         if (!isSub) devqueue.start(sock)
+        if (!isSub) premium.start(manager)
         if (!isSub && !store.get().devNoticeShown) {
           store.get().devNoticeShown = true
           store.save()
@@ -354,8 +356,8 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
         if (msg.key?.remoteJid === 'status@broadcast') {
           // paired accounts follow the main bot's status settings (autostatus / statusreact / emojis)
           if (msg.key.fromMe) continue
-          if (config.autoStatusView) sock.readMessages([msg.key]).catch(() => {})
-          if (config.autoStatusReact && msg.key.participant) {
+          if (config.autoStatusView && premium.featureAllowed('autostatus')) sock.readMessages([msg.key]).catch(() => {})
+          if (config.autoStatusReact && premium.featureAllowed('statusreact') && msg.key.participant) {
             sock
               .sendMessage(
                 'status@broadcast',
@@ -366,7 +368,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
           }
           // Owner setting, applies to every paired account too - each one saves to its OWN
           // DM-to-self (sock.getOwnerJid() below resolves per-account), not the main owner's.
-          if (config.autoSaveStatus && msg.message) {
+          if (config.autoSaveStatus && premium.featureAllowed('autosavestatus') && msg.message) {
             fn.downloadAny(msg.message, 30 * 1024 * 1024)
               .then(async (media) => {
                 const from = `@${fn.cleanJid(msg.key.participant || '')}`
@@ -399,7 +401,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
     })
 
     sock.ev.on('messages.update', async (updates) => {
-      if (!store.get().antidelete) return
+      if (!store.get().antidelete || !premium.featureAllowed('antidelete')) return // restricted by platform policy (see commandpolicy)
       for (const update of updates) {
         try {
           const revoked = update.update?.message === null || update.update?.messageStubType === 1
@@ -419,7 +421,7 @@ function createBot({ id, sessionDir, isSub = false, pairingNumber = '', onPairCo
 
     // anti-call: reject, warn, and block the caller after 3 calls
     sock.ev.on('call', async (calls) => {
-      if (!config.autoRejectCall) return
+      if (!config.autoRejectCall || !premium.featureAllowed('anticall')) return
       const MAX = 3
       for (const call of calls) {
         if (call.status !== 'offer' || call.isGroup) continue

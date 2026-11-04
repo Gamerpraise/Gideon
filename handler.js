@@ -7,6 +7,7 @@ const fn = require('./functions')
 const autoreply = require('./autoreply')
 const guard = require('./guard')
 const levels = require('./levels')
+const premium = require('./premium')
 
 const commands = new Map()
 const aliases = new Map()
@@ -106,7 +107,7 @@ async function handleMessage(sock, msg) {
     const m = serialize(sock, msg)
     if (!m.body && !m.quoted) {
       // voice notes have no text: the auto-reply may still answer them
-      if (m.mtype === 'audioMessage' && !isBanned(m.sender)) await autoreply.checkVoice(sock, m).catch(() => {})
+      if (m.mtype === 'audioMessage' && !isBanned(m.sender)) { if (premium.featureAllowed('autoreply')) await autoreply.checkVoice(sock, m).catch(() => {}) }
       return
     }
     // resolve hidden @lid senders to a phone jid when Baileys knows the mapping
@@ -191,7 +192,7 @@ async function handleMessage(sock, msg) {
     if (!command) {
       if (parsed) console.log(`[cmd] unknown: ${parsed.cmd}`)
       levels.onMessage(sock, m).catch(() => {})
-      await autoreply.check(sock, m).catch((err) => console.log('[autoreply]', err.message))
+      if (premium.featureAllowed('autoreply')) await autoreply.check(sock, m).catch((err) => console.log('[autoreply]', err.message))
       return
     }
 
@@ -234,8 +235,13 @@ async function handleMessage(sock, msg) {
     // Owner settings like this one are main-bot-only to CHANGE (see commands/settings.js,
     // owner: true with no subSafe) but apply to every paired account too once set - a paired
     // user can't flip it themselves, but gets the same behavior the main owner chose.
+    // Platform layer (see premium.js): admin switches, FREE/PREMIUM tier, and the server-side Premium check.
+    // Economy mode: when the admin selects GLOBAL, the local economy commands run their Global Network twin.
+    const target = premium.economyRedirect(command, getCommand) || command
+    const verdict = await premium.gate(target)
+    if (!verdict.allow) return m.reply(verdict.message)
     if (config.autoTyping) sock.sendPresenceUpdate('composing', m.chat).catch(() => {})
-    await command.run(sock, m, { args: parsed.args, text: parsed.text, prefix: config.prefix, commands: listCommands(), config, store, fn })
+    await target.run(sock, m, { args: parsed.args, text: parsed.text, prefix: config.prefix, commands: listCommands(), config, store, fn })
   } catch (err) {
     console.error('[handler]', err)
     try {
@@ -245,6 +251,7 @@ async function handleMessage(sock, msg) {
 }
 
 module.exports = {
+  registerCommand,
   loadCommands,
   watchCommands,
   getCommand,

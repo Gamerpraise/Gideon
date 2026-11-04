@@ -38,7 +38,8 @@ const defaults = {
   autobio: { enabled: false, text: '{bot} online • {time} • {date}' },
   updateSha: null,
   updateNotified: null,
-  autoreply: { enabled: false }
+  autoreply: { enabled: false },
+  premium: { installId: null, token: null }
 }
 
 function load() {

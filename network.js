@@ -2,6 +2,7 @@
 // plain HTTP request; nothing here touches Firestore directly, the server does all the real
 // decision-making. A bot only reaches this at all once its owner has run .joinnetwork on.
 const axios = require('axios')
+const crypto = require('crypto')
 const config = require('./config')
 
 function configured() {
@@ -21,7 +22,10 @@ function client() {
 async function call(method, path, data) {
   if (!configured()) return { ok: false, error: 'NOT_CONFIGURED' }
   try {
-    const res = await client().request({ method, url: path, data })
+    // Every economy write carries a one-off idempotency key, so a request that is repeated (timeout, retry,
+    // double tap) is applied by the server only once. The server replays the stored answer instead.
+    const headers = method === 'post' && !/^\/(install|premium|policy)/.test(path) ? { 'x-idempotency-key': crypto.randomBytes(16).toString('hex') } : undefined
+    const res = await client().request({ method, url: path, data, headers })
     return { ok: true, ...res.data }
   } catch (err) {
     if (err.code === 'ECONNABORTED') return { ok: false, error: 'TIMEOUT' }
@@ -31,6 +35,15 @@ async function call(method, path, data) {
     return { ok: false, error: body?.error || 'UNREACHABLE', wait: body?.wait, status: err.response?.status }
   }
 }
+
+// Platform layer: policy, installation identity, Premium (see premium.js)
+const policy = () => call('get', '/policy')
+const registerInstall = (body) => call('post', '/install/register', body)
+const premiumAuthorize = (installId, token, command) => call('post', '/premium/authorize', { installId, token, command })
+const premiumStatus = (installId, token) => call('post', '/premium/status', { installId, token })
+const premiumClaim = (installId, token, ownerNumber, premiumId) => call('post', '/premium/claim', { installId, token, ownerNumber, premiumId })
+const premiumCheckout = (installId, token, plan, email) => call('post', '/premium/checkout', { installId, token, plan, email })
+const premiumPayment = (installId, token, reference) => call('post', '/premium/payment', { installId, token, reference })
 
 const join = (number) => call('post', '/join', { number })
 const leave = (number) => call('post', '/leave', { number })
@@ -124,6 +137,14 @@ async function devBotcount() {
 
 module.exports = {
   configured,
+  call,
+  policy,
+  registerInstall,
+  premiumAuthorize,
+  premiumStatus,
+  premiumClaim,
+  premiumCheckout,
+  premiumPayment,
   join,
   leave,
   balance,

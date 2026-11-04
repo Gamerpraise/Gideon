@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "katabump": "bash start.sh"
+    "katabump": "bash start.sh",
+    "test": "node tests/platform.test.js && node tests/bot.test.js",
+    "registry": "node scripts/gen-registry.js",
+    "test:ui": "node tests/ui.test.js"
   },
   "engines": {
     "node": ">=20"
