@@ -2,7 +2,7 @@
 //  - it asks the Global Gideon Network server who it is allowed to be (/premium/authorize, /premium/status),
 //  - it keeps a short cache of the server's answers only so a flaky connection does not break every command,
 //  - Free commands are never blocked by this file except through the admin's own switches (economy / fun / disabled).
-// If the server cannot be reached the bot runs in FREE MODE: premium commands stay blocked, everything else works.
+// FREE MODE (subscriptions off): everything works for everyone, premium commands included. PREMIUM MODE: premium commands (or the whole bot, if paid-only is on) need a paid Premium ID.
 const fs = require('fs')
 const path = require('path')
 const net = require('./network')
@@ -20,7 +20,7 @@ const defaultMap = {}
 for (const c of defaults.commands) defaultMap[c.name] = { t: c.defaultTier === 'PREMIUM' ? 'P' : c.defaultTier === 'RESTRICTED' ? 'R' : 'F', e: c.defaultEnabled ? 1 : 0, c: c.class }
 
 const state = {
-  settings: { subscriptionEnabled: false, paystackEnabled: false, premiumCommandsEnabled: true, economyEnabled: true, funEnabled: true, economyMode: 'LOCAL', freeModeMessage: FREE_MODE_MESSAGE },
+  settings: { subscriptionEnabled: false, paidOnlyMode: false, paidOnlyFreeCommands: ['subscribe', 'premium'], paystackEnabled: false, premiumCommandsEnabled: true, economyEnabled: true, funEnabled: true, economyMode: 'LOCAL', freeModeMessage: FREE_MODE_MESSAGE },
   commands: null, // from the server; falls back to defaultMap
   policyAt: 0,
   entitlement: { active: false, at: 0, expiresAt: 0, premiumId: null },
@@ -94,7 +94,8 @@ function featureAllowed(feature) {
   const e = entry(feature)
   if (e.t === 'R' || !e.e) return false
   if (e.t !== 'P') return true
-  return !!(state.settings.subscriptionEnabled && state.settings.premiumCommandsEnabled && entitlementActive())
+  if (!state.settings.subscriptionEnabled) return !!state.settings.premiumCommandsEnabled // Free Mode: everyone gets everything
+  return !!(state.settings.premiumCommandsEnabled && entitlementActive())
 }
 
 // ------------------------------------------------------------------ the gate used by handler.js
@@ -107,10 +108,15 @@ async function gate(command) {
   if (!e.e) return { allow: false, message: 'This command is currently disabled by the administrator.' }
   if (e.c === 'economy' && !s.economyEnabled) return { allow: false, message: 'The economy system is currently disabled by the administrator.' }
   if (e.c === 'fun' && !s.funEnabled) return { allow: false, message: 'Fun commands are currently disabled by the administrator.' }
-  if (e.t !== 'P') return { allow: true }
+  // Paid-only (Premium Mode + lock-whole-bot): every command is treated as Premium except the admin's free list
+  const locked = !!(s.subscriptionEnabled && s.paidOnlyMode && !(s.paidOnlyFreeCommands || ['subscribe', 'premium']).includes(name))
+  if (e.t !== 'P' && !locked) return { allow: true }
+  if (e.t === 'P' && !s.premiumCommandsEnabled) return { allow: false, message: 'Premium commands are currently disabled by the administrator.' }
+  // Free Mode: subscriptions are off, so everyone can use premium commands too
+  if (!s.subscriptionEnabled) return { allow: true }
 
   // Premium: ask the server every time (a successful answer is reused for a minute to keep commands quick)
-  if (Date.now() - state.authCache.okAt < 60 * 1000 && s.subscriptionEnabled && s.premiumCommandsEnabled) return { allow: true }
+  if (Date.now() - state.authCache.okAt < 60 * 1000 && s.subscriptionEnabled) return { allow: true }
   const id = await ensureInstall()
   if (!id) return { allow: false, message: s.subscriptionEnabled ? 'Could not reach the Gideon network to verify Premium right now. Try again shortly.' : s.freeModeMessage }
   const r = await net.premiumAuthorize(id.installId, id.token, name)

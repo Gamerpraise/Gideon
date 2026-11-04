@@ -96,11 +96,12 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
   // ---------------------------------------------------------------- Free Mode
   const inst = await reg()
   await t('default is FREE MODE (subscriptions off)', async () => assert.strictEqual((await A('GET', '/settings')).body.settings.subscriptionEnabled, false))
-  await t('Free Mode: premium command blocked with the exact Free Mode message', async () => {
-    const r = await authz(inst, 'gideonai'); assert.strictEqual(r.allow, false); assert.strictEqual(r.code, 'FREE_MODE')
-    assert.strictEqual(r.message, 'Gideon Premium is currently unavailable.\nGideon is operating in Free Mode.')
+  await t('Free Mode: premium commands are OPEN to everyone (no subscription needed)', async () => {
+    for (const c of ['gideonai', 'imagine', 'removebg']) { const r = await authz(inst, c); assert.strictEqual(r.allow, true, c); assert.strictEqual(r.tier, 'FREE_MODE', c) }
   })
-  await t('Free Mode: no payment prompt in the blocked message', async () => assert.ok(!/subscribe|pay|₦/i.test((await authz(inst, 'gideonai')).message)))
+  await t('Free Mode + Global Premium Commands switch OFF: premium commands blocked for everyone', async () => {
+    await setSettings({ premiumCommandsEnabled: false }); const r = await authz(inst, 'gideonai'); assert.strictEqual(r.allow, false); assert.strictEqual(r.code, 'PREMIUM_OFF'); await setSettings({ premiumCommandsEnabled: true })
+  })
   await t('Free Mode: free management command allowed', async () => assert.strictEqual((await authz(inst, 'lock')).allow, true))
   await t('Free Mode: economy command allowed (local + global names)', async () => { assert.strictEqual((await authz(inst, 'balance')).allow, true); assert.strictEqual((await authz(inst, 'gbalance')).allow, true) })
   await t('Free Mode: fun command allowed', async () => assert.strictEqual((await authz(inst, 'joke')).allow, true))
@@ -121,6 +122,14 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
   // ---------------------------------------------------------------- Premium Mode, Paystack not configured
   await t('Premium Mode ON: free commands still work', async () => { await setSettings({ subscriptionEnabled: true }); for (const c of ['lock', 'balance', 'joke']) assert.strictEqual((await authz(inst, c)).allow, true, c) })
   await t('Premium Mode ON, no subscription: premium command blocked (NOT_PREMIUM)', async () => { const r = await authz(inst, 'gideonai'); assert.strictEqual(r.allow, false); assert.strictEqual(r.code, 'NOT_PREMIUM') })
+  await t('paid-only ignored while subscriptions are OFF', async () => { await setSettings({ subscriptionEnabled: false, paidOnlyMode: true }); assert.strictEqual((await authz(inst, 'joke')).allow, true); await setSettings({ subscriptionEnabled: true }) })
+  await t('Paid-only + Premium Mode: whole bot needs Premium, free list still works', async () => {
+    await setSettings({ paidOnlyMode: true, subscriptionEnabled: true })
+    for (const c of ['joke', 'balance', 'lock']) { const r = await authz(inst, c); assert.strictEqual(r.allow, false, c); assert.strictEqual(r.code, 'NOT_PREMIUM', c); assert.ok(/Premium is required/.test(r.message)) }
+    for (const c of ['subscribe', 'premium', 'menu', 'ping']) assert.strictEqual((await authz(inst, c)).allow, true, c)
+    await setSettings({ paidOnlyMode: false })
+  })
+  await t('free list always keeps subscribe + premium', async () => { await setSettings({ paidOnlyFreeCommands: 'menu' }); const l = (await A('GET', '/settings')).body.settings.paidOnlyFreeCommands; assert.ok(l.includes('subscribe') && l.includes('premium') && l.includes('menu')) })
   await t('Paystack not configured: status says payments unavailable, checkout refused', async () => {
     const s = (await R('POST', '/premium/status', { installId: inst.installId, token: inst.token })).body; assert.strictEqual(s.payments, false)
     const r = (await R('POST', '/premium/checkout', { installId: inst.installId, token: inst.token, plan: 'monthly', email: 'a@b.co' })).body; assert.strictEqual(r.ok, false); assert.strictEqual(r.error, 'PAYMENTS_UNAVAILABLE')
@@ -159,7 +168,7 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
     await A('POST', `/premium/${id}/restore`); assert.strictEqual((await authz(e, 'gideonai')).allow, true)
   })
   await t('global Premium Commands switch OFF blocks even subscribers', async () => { await setSettings({ premiumCommandsEnabled: false }); const r = await authz(inst, 'gideonai'); assert.strictEqual(r.allow, false); assert.strictEqual(r.code, 'PREMIUM_OFF'); assert.strictEqual((await authz(inst, 'lock')).allow, true); await setSettings({ premiumCommandsEnabled: true }) })
-  await t('turning subscriptions OFF blocks premium again (even for a valid subscriber)', async () => { await setSettings({ subscriptionEnabled: false }); assert.strictEqual((await authz(inst, 'gideonai')).code, 'FREE_MODE'); await setSettings({ subscriptionEnabled: true }) })
+  await t('turning subscriptions OFF opens premium to everyone (Free Mode)', async () => { await setSettings({ subscriptionEnabled: false }); const r = await authz(inst, 'gideonai'); assert.strictEqual(r.allow, true); assert.strictEqual(r.tier, 'FREE_MODE'); await setSettings({ subscriptionEnabled: true }) })
 
   // ---------------------------------------------------------------- Paystack configured
   await t('Paystack secret is rejected if malformed', async () => assert.strictEqual((await A('PUT', '/paystack', { secretKey: 'hello' })).status, 400))
@@ -262,7 +271,11 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
   await t('admin balance adjustment is audited and cannot create a negative balance', async () => {
     assert.strictEqual((await A('POST', '/economy/players/111/adjust', { delta: -5000, reason: 'test' })).status, 400); assert.strictEqual(db.data.players['111'].balance, 1000)
     assert.strictEqual((await A('POST', '/economy/players/111/adjust', { delta: 250, reason: 'event reward' })).body.after, 1250)
-    assert.strictEqual((await A('POST', '/economy/players/111/adjust', { delta: 5, reason: '' })).status, 400, 'a reason is required')
+    assert.strictEqual((await A('POST', '/economy/players/111/adjust', { delta: 5, reason: '' })).body.after, 1255, 'blank reason gets a default')
+    const set1 = (await A('POST', '/economy/players/111/adjust', { mode: 'set', amount: '5000' })).body; assert.strictEqual(set1.after, 5000); assert.strictEqual(db.data.players['111'].balance, 5000)
+    assert.strictEqual((await A('POST', '/economy/players/111/adjust', { mode: 'set', amount: 0 })).body.after, 0)
+    assert.strictEqual((await A('POST', '/economy/players/111/adjust', { mode: 'set', amount: -5 })).status, 400)
+    await A('POST', '/economy/players/111/adjust', { mode: 'set', amount: 1250 })
     const logs = (await A('GET', '/logs')).body.logs; assert.ok(logs.some((l) => l.action === 'economy.adjust' && l.detail.number === '111'))
   })
   await t('concurrent adjustments never overdraw', async () => { await db.collection('players').doc('222').set({ balance: 100 }); const rs = await Promise.all(Array.from({ length: 5 }, () => A('POST', '/economy/players/222/adjust', { delta: -40, reason: 'race' }))); assert.strictEqual(rs.filter((r) => r.status === 200).length, 2); assert.strictEqual(db.data.players['222'].balance, 20) })
