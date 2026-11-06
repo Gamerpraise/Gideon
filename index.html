@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>GIDEON CLOUD</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23000'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='%23e5121f' stroke-width='3'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#050506;--panel:#0e0e11;--panel2:#15151a;--line:#26262d;--red:#e5121f;--red2:#ff3b47;--text:#f5f5f6;--dim:#9a9aa5;--r:16px;
+--font:"Inter","Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+*{box-sizing:border-box}html{background:var(--bg)}
+[hidden]{display:none!important}
+body{margin:0;min-height:100vh;background:radial-gradient(900px 420px at 50% -120px,#2a0509 0,transparent 70%),var(--bg);color:var(--text);font:15px/1.5 var(--font);padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0 22px}
+.brand b{font-size:19px;letter-spacing:.14em}.brand span{display:block;color:var(--dim);font-size:12px;letter-spacing:.04em;margin-top:2px}
+.brand i{font-style:normal;color:var(--red)}
+.chip{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12px;color:var(--dim);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--dim);flex:none}
+.dot.online{background:var(--red);border-color:var(--red);box-shadow:0 0 0 0 rgba(229,18,31,.6);animation:ping 2s infinite}
+.dot.connecting{border-color:var(--red);animation:blink 1s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 7px rgba(229,18,31,0)}100%{box-shadow:0 0 0 0 rgba(229,18,31,0)}}
+@keyframes blink{50%{opacity:.25}}
+.hero{border:1px solid var(--line);border-radius:22px;padding:28px 22px;background:linear-gradient(160deg,#18080a,var(--panel) 55%);display:grid;gap:18px;margin-bottom:18px}
+.hero h1{margin:0;font-size:clamp(26px,5.4vw,44px);line-height:1.08;letter-spacing:-.02em;max-width:16ch}
+.hero p{margin:0;color:var(--dim);max-width:52ch}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:600 12.5px var(--font);letter-spacing:.07em;padding:11px 16px;border-radius:12px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;transition:transform .15s,background .2s,border-color .2s,opacity .2s}
+.btn:hover:not(:disabled){border-color:#4a4a55;transform:translateY(-1px)}
+.btn:active:not(:disabled){transform:none}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}.btn.red:hover:not(:disabled){background:var(--red2);border-color:var(--red2)}
+.btn.ghost{background:transparent}.btn.danger{color:var(--red2)}
+.cta{font-size:15px;padding:16px 26px;min-height:54px;justify-self:start;position:relative}
+.cta::after{content:"";position:absolute;inset:-5px;border-radius:17px;border:1px solid var(--red);opacity:0;animation:halo 2.6s 1.2s 2}
+@keyframes halo{0%{opacity:.7;transform:scale(.97)}100%{opacity:0;transform:scale(1.06)}}
+.grid{display:grid;gap:18px}
+@media(min-width:900px){.grid{grid-template-columns:380px 1fr;align-items:start}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.card h2{margin:0 0 4px;font-size:17px}.card .sub{margin:0 0 16px;color:var(--dim);font-size:13.5px}
+label{display:block;font-size:13px;color:var(--dim);margin:14px 0 6px}
+input{width:100%;background:#09090c;border:1px solid var(--line);border-radius:12px;color:var(--text);font:15px var(--font);padding:12px 14px;min-height:46px;transition:border-color .2s}
+input:focus{outline:none;border-color:var(--red)}
+input.bad{border-color:var(--red2)}.err{color:var(--red2);font-size:12.5px;min-height:18px;margin-top:4px}
+form .btn{width:100%;margin-top:16px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.head h2{margin:0}
+.bots{display:grid;gap:12px}
+.bot{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px;animation:in .3s}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+.bot .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.bot h3{margin:0;font-size:16px;overflow-wrap:anywhere}
+dl{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;margin:12px 0;font-size:13px}dt{color:var(--dim)}dd{margin:0;overflow-wrap:anywhere}
+.acts{display:flex;flex-wrap:wrap;gap:8px}.acts .btn{flex:1 1 auto;padding:9px 12px;min-height:38px;font-size:11.5px}
+.empty{border:1px dashed var(--line);border-radius:14px;padding:26px 18px;text-align:center;color:var(--dim)}
+.notice{border:1px solid var(--red);background:#1c0709;border-radius:14px;padding:14px 16px;margin-bottom:18px;font-size:13.5px}
+.notice b{display:block;margin-bottom:2px}
+.msg{margin-top:14px;font-size:13.5px;padding:11px 13px;border-radius:12px;border:1px solid var(--line);display:none}.msg.show{display:block}.msg.bad{border-color:var(--red2);color:var(--red2)}
+aside{position:fixed;inset:0;z-index:20;display:none}aside.open{display:block}
+aside .shade{position:absolute;inset:0;background:rgba(0,0,0,.65);animation:fade .2s}
+aside .sheet{position:absolute;background:var(--panel);border:1px solid var(--line);overflow:auto;padding:22px;animation:up .28s cubic-bezier(.2,.8,.2,1);left:0;right:0;bottom:0;max-height:92vh;border-radius:22px 22px 0 0;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+@media(min-width:760px){aside .sheet{left:auto;top:0;width:460px;max-height:none;border-radius:0;animation-name:side}}
+@keyframes fade{from{opacity:0}}@keyframes up{from{transform:translateY(40px);opacity:0}}@keyframes side{from{transform:translateX(40px);opacity:0}}
+pre{background:#09090c;border:1px solid var(--line);border-radius:12px;padding:12px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:22px;max-width:380px}dialog::backdrop{background:rgba(0,0,0,.7)}
+dialog .acts{margin-top:16px}
+#toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--text);color:#000;padding:11px 16px;border-radius:12px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;z-index:40;max-width:90vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+footer{margin-top:34px;text-align:center;color:var(--dim);font-size:12.5px}footer b{color:var(--text);letter-spacing:.1em}
+:focus-visible{outline:2px solid var(--red2);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand"><b>GIDEON <i>CLOUD</i></b><span>Powered by GPRAISE</span></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end"><span class="chip" id="who" hidden></span><button class="btn ghost" id="out" type="button" hidden style="min-height:32px;padding:6px 12px">SIGN OUT</button><span class="chip" id="backend"><span class="dot"></span><span>Checking</span></span></div>
+  </header>
+
+  <section class="hero">
+    <h1>Run Gideon on every WhatsApp you own.</h1>
+    <p>Generate a session on the pairing site, paste the Gideon~ Session ID below, and each account runs as its own bot with its own session.</p>
+    <a class="btn red cta" id="pair" target="_blank" rel="noopener noreferrer" href="https://praise-pair.onrender.com/">GENERATE PAIR CODE</a>
+  </section>
+
+  <div id="notice"></div>
+
+  <section class="card" id="auth" hidden style="max-width:440px;margin:0 auto 18px">
+    <h2>Sign in to Gideon Cloud</h2>
+    <p class="sub">Use the same Gideon account everywhere. Your bots are only visible to you.</p>
+    <form id="authForm" novalidate>
+      <label for="em">Email</label><input id="em" type="email" autocomplete="email" placeholder="you@example.com">
+      <label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" placeholder="At least 6 characters">
+      <div class="err" id="e-auth"></div>
+      <button class="btn red" id="signin" type="submit">SIGN IN</button>
+      <button class="btn" id="signup" type="button">CREATE ACCOUNT</button>
+      <button class="btn ghost" id="forgot" type="button">FORGOT PASSWORD</button>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+  <div class="grid">
+    <section class="card" id="connectCard">
+      <h2>Connect WhatsApp</h2>
+      <p class="sub">Use the Gideon~ Session ID from the pairing site, not the short pairing code.</p>
+      <form id="form" autocomplete="off" novalidate>
+        <label for="sid">Session ID</label>
+        <input id="sid" type="password" name="gc-session" placeholder="Gideon~..." autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <div class="err" id="e-sid"></div>
+        <label for="own">Owner name</label>
+        <input id="own" type="text" maxlength="40" autocomplete="off" placeholder="Your name">
+        <div class="err" id="e-own"></div>
+        <label for="num">Owner WhatsApp number</label>
+        <input id="num" type="tel" inputmode="numeric" autocomplete="off" placeholder="2348012345678">
+        <div class="err" id="e-num">Country code, no + or spaces.</div>
+        <button class="btn red" id="go" type="submit">CONNECT GIDEON</button>
+      </form>
+      <div class="msg" id="formMsg" role="status"></div>
+      <p class="sub" id="connectHint" hidden style="margin:12px 0 0">Connecting is switched off until the backend is reachable. Fix the address above first.</p>
+    </section>
+
+    <section>
+      <div class="head"><h2>My bots</h2><button class="btn ghost" id="add" type="button">ADD NEW BOT</button></div>
+      <div class="bots" id="bots" aria-live="polite"></div>
+    </section>
+  </div>
+
+  </div>
+
+  <footer><b>GIDEON CLOUD</b> &middot; Powered by GPRAISE</footer>
+</div>
+
+<aside id="drawer" aria-hidden="true"><div class="shade" data-close></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Manage bot" id="sheet"></div></aside>
+<dialog id="confirm"><b id="cTitle"></b><p id="cText" style="color:var(--dim);margin:8px 0 0"></p><div class="acts"><button class="btn ghost" id="cNo" type="button">CANCEL</button><button class="btn red" id="cYes" type="button">DELETE</button></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="cloud-config.js"></script>
+<script>
+(() => {
+'use strict'
+const C = window.GIDEON_CLOUD || {}
+const EP = Object.assign({ capabilities: '/api/cloud/capabilities', list: '/api/cloud/bots', connect: '/api/cloud/bots', bot: '/api/cloud/bots/{id}', action: '/api/cloud/bots/{id}/{action}', remove: '/api/cloud/bots/{id}', logs: '/api/cloud/bots/{id}/logs' }, C.ENDPOINTS || {})
+const $ = (id) => document.getElementById(id)
+const ACTIONS = ['start', 'stop', 'restart']
+const state = { phase: 'checking', caps: null, bots: [], open: null, busy: new Set(), removed: new Set(), logTimer: null }
+$('pair').href = C.PAIR_URL || 'https://praise-pair.onrender.com/'
+
+// ---------------------------------------------------------------- tiny DOM helper (text only, never innerHTML)
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag)
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === false || v == null) continue
+    if (k.startsWith('on')) el.addEventListener(k.slice(2), v)
+    else if (k === 'class') el.className = v
+    else el.setAttribute(k, v === true ? '' : v)
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)))
+  return el
+}
+function toast(text) {
+  const t = $('toast'); t.textContent = text; t.classList.add('show')
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 3200)
+}
+
+// ---------------------------------------------------------------- sign-in (existing Firebase Authentication, REST, no SDK)
+const FB = C.FIREBASE || {}
+const AUTH = 'https://identitytoolkit.googleapis.com/v1/accounts:'
+const session = { idToken: '', exp: 0, refresh: '', email: '' }
+const fbMsg = (m) => /EMAIL_NOT_FOUND|INVALID_PASSWORD|INVALID_LOGIN_CREDENTIALS/.test(m || '') ? 'Email or password is incorrect.' : /EMAIL_EXISTS/.test(m || '') ? 'An account with this email already exists. Sign in instead.' : /WEAK_PASSWORD/.test(m || '') ? 'Use a password with at least 6 characters.' : /INVALID_EMAIL|MISSING_EMAIL/.test(m || '') ? 'Enter a valid email address.' : /TOO_MANY/.test(m || '') ? 'Too many attempts. Wait a few minutes and try again.' : /OPERATION_NOT_ALLOWED|ADMIN_ONLY/.test(m || '') ? 'Account creation is turned off for this project.' : 'Sign-in failed. Try again.'
+async function fb(url, body, form) {
+  let r
+  try { r = await fetch(url + '?key=' + encodeURIComponent(FB.apiKey || ''), { method: 'POST', headers: { 'Content-Type': form ? 'application/x-www-form-urlencoded' : 'application/json' }, body: form ? new URLSearchParams(body).toString() : JSON.stringify(body) }) } catch { throw new Error('Could not reach the sign-in service.') }
+  const d = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(fbMsg(d?.error?.message))
+  return d
+}
+function setSession(idToken, refresh, expiresIn) {
+  let email = ''
+  try { email = JSON.parse(atob(idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || '' } catch {}
+  Object.assign(session, { idToken, refresh, email, exp: Date.now() + (Number(expiresIn) || 3600) * 1000 })
+  try { localStorage.setItem('gc.rt', refresh) } catch {}
+}
+async function refreshToken() {
+  const d = await fb('https://securetoken.googleapis.com/v1/token', { grant_type: 'refresh_token', refresh_token: session.refresh }, true)
+  setSession(d.id_token, d.refresh_token, d.expires_in)
+}
+async function token() {
+  if (!session.idToken) return ''
+  if (session.exp - Date.now() < 60000) await refreshToken()
+  return session.idToken
+}
+function signOut() {
+  Object.assign(session, { idToken: '', exp: 0, refresh: '', email: '' }); state.bots = []; state.caps = null; closeBot()
+  try { localStorage.removeItem('gc.rt') } catch {}
+  setPhase('signedout', 'Signed out')
+}
+
+// ---------------------------------------------------------------- API client (the only place that talks to the bot backend)
+const savedBase = () => { try { return localStorage.getItem('gc.base') || '' } catch { return '' } }
+const base = () => String(C.API_BASE || savedBase() || '').replace(/\/+$/, '')
+const isPreview = () => !/^https?:$/.test(location.protocol) || /^(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(location.hostname)
+const secureBase = () => !base() || /^https:\/\//i.test(base()) || /^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(base())
+async function api(method, key, params = {}, body) {
+  if (!secureBase()) throw Object.assign(new Error('API_BASE must use https.'), { code: 'INSECURE' })
+  const path = EP[key].replace(/\{(\w+)\}/g, (_, k) => encodeURIComponent(params[k] ?? ''))
+  const headers = { Accept: 'application/json' }
+  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  try { const tok = await token(); if (tok) headers.Authorization = 'Bearer ' + tok } catch { signOut(); throw Object.assign(new Error('Sign in required.'), { code: 'AUTH' }) }
+  let res
+  try {
+    res = await fetch(base() + path, { method, headers, cache: 'no-store', referrerPolicy: 'no-referrer', body: body === undefined ? undefined : JSON.stringify(body) })
+  } catch {
+    throw Object.assign(new Error('Could not reach the backend.'), { code: 'UNREACHABLE' })
+  }
+  let data = null
+  try { data = await res.json() } catch {}
+  if (!res.ok) throw Object.assign(new Error((data && (data.error || data.message)) || `Request failed (${res.status}).`), { code: data?.code === 'EMAIL_UNVERIFIED' ? 'UNVERIFIED' : res.status === 401 ? 'AUTH' : 'HTTP', status: res.status })
+  return data || {}
+}
+
+// Only whitelisted fields ever reach the UI; anything credential-like from the backend is dropped.
+function clean(b) {
+  const status = ['online', 'offline', 'connecting', 'error'].includes(b?.status) ? b.status : 'offline'
+  return { id: String(b?.id ?? ''), name: String(b?.name || 'Gideon'), number: String(b?.number || ''), ownerName: String(b?.ownerName || ''), status, uptimeSeconds: Number.isFinite(b?.uptimeSeconds) ? b.uptimeSeconds : null, error: b?.error ? String(b.error) : '' }
+}
+const can = (a) => state.phase === 'ready' && Array.isArray(state.caps?.actions) && state.caps.actions.includes(a)
+
+// ---------------------------------------------------------------- page state
+function setPhase(phase, text) {
+  state.phase = phase
+  const chipEl = $('backend'); chipEl.lastChild.textContent = text
+  chipEl.firstChild.className = 'dot' + (phase === 'ready' ? ' online' : phase === 'checking' ? ' connecting' : '')
+  $('auth').hidden = phase !== 'signedout'
+  $('app').hidden = phase !== 'ready' && phase !== 'unverified' && phase !== 'down'
+  $('who').hidden = $('out').hidden = !session.idToken; $('who').textContent = session.email
+  const n = $('notice'); n.replaceChildren()
+  const msgs = {
+    down: ['Cannot reach the backend', 'Check your connection and that the bot is running.'],
+    insecure: ['Insecure backend address', 'API_BASE must start with https:// so your Session ID is encrypted in transit.'],
+    unverified: ['Verify your email', 'We sent a verification link to ' + session.email + '. Open it, then press the button below.']
+  }
+  if (msgs[phase]) {
+    const kids = [h('b', {}, msgs[phase][0]), msgs[phase][1]]
+    if (phase === 'down') {
+      kids.push(' ', h('a', { href: '#', style: 'color:var(--red2)', onclick: (e) => { e.preventDefault(); init(true) } }, 'Retry'))
+      const inp = h('input', { id: 'baseUrl', type: 'url', inputmode: 'url', autocapitalize: 'off', spellcheck: 'false', placeholder: 'https://your-gideon.onrender.com', value: savedBase() })
+      const saveBase = (v) => { try { v ? localStorage.setItem('gc.base', v) : localStorage.removeItem('gc.base') } catch {} init(true) }
+      kids.push(h('div', { style: 'margin-top:12px' },
+        h('div', { style: 'color:var(--dim);font-size:12.5px;margin-bottom:6px' }, isPreview()
+          ? 'You are previewing this page outside the bot, so there is no backend here. Enter the address of your running Gideon bot (the link that opens this dashboard when deployed).'
+          : 'If the bot runs at a different address than this page, enter it here.'),
+        inp,
+        h('div', { class: 'acts', style: 'margin-top:10px' },
+          h('button', { class: 'btn red', type: 'button', onclick: () => { let v = inp.value.trim().replace(/\/+$/, ''); if (v && !/^https?:\/\//i.test(v)) v = 'https://' + v; if (v && !/^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(v)) return toast('The address must start with https://'); saveBase(v) } }, 'SAVE & RETRY'),
+          savedBase() && h('button', { class: 'btn ghost', type: 'button', onclick: () => saveBase('') }, 'RESET'))))
+    }
+    if (phase === 'unverified') kids.push(h('div', { class: 'acts', style: 'margin-top:12px' },
+      h('button', { class: 'btn red', type: 'button', onclick: async () => { try { await refreshToken(); await init(true) } catch (e) { toast(e.message) } } }, 'I VERIFIED MY EMAIL'),
+      h('button', { class: 'btn', type: 'button', onclick: async () => { try { await fb(AUTH + 'sendOobCode', { requestType: 'VERIFY_EMAIL', idToken: await token() }); toast('Verification email sent') } catch (e) { toast(e.message) } } }, 'RESEND EMAIL')))
+    n.append(h('div', { class: 'notice' }, kids))
+  }
+  $('go').disabled = phase !== 'ready'; $('connectHint').hidden = phase === 'ready'
+  $('add').disabled = phase !== 'ready'
+  render()
+}
+async function init(keepSession) {
+  if (!secureBase()) return setPhase('insecure', 'Insecure address')
+  if (!keepSession && !session.idToken) {
+    let rt = ''
+    try { rt = localStorage.getItem('gc.rt') || '' } catch {}
+    if (!rt) return setPhase('signedout', 'Signed out')
+    session.refresh = rt
+    setPhase('checking', 'Checking')
+    try { await refreshToken() } catch { return signOut() }
+  }
+  setPhase('checking', 'Checking')
+  try {
+    state.caps = await api('GET', 'capabilities')
+    setPhase('ready', 'Connected')
+    await refresh()
+  } catch (e) {
+    if (e.code === 'UNVERIFIED') setPhase('unverified', 'Verify email')
+    else if (e.code === 'AUTH') signOut()
+    else setPhase('down', 'Backend unreachable')
+  }
+}
+async function refresh() {
+  if (state.phase !== 'ready') return
+  try {
+    const r = await api('GET', 'list')
+    const before = state.bots.map((b) => b.id)
+    state.bots = (Array.isArray(r.bots) ? r.bots : []).map(clean)
+    // a bot that vanished on its own = WhatsApp logged it out and the server deleted its saved session
+    const gone = before.filter((id) => !state.bots.some((b) => b.id === id) && !state.removed.has(id))
+    if (gone.length) { toast('WhatsApp logged a device out. Its session was deleted. Add a new Session ID to reconnect.'); if (gone.includes(state.open)) closeBot() }
+    render()
+    if (state.open) openBot(state.open, true)
+  } catch (e) {
+    if (e.code === 'AUTH') signOut()
+  }
+}
+
+// ---------------------------------------------------------------- sign-in form
+const authMsg = (t) => { $('e-auth').textContent = t || '' }
+async function doAuth(kind) {
+  const email = $('em').value.trim(), password = $('pw').value
+  if (kind !== 'reset' && (!email || !password)) return authMsg('Enter your email and password.')
+  if (kind === 'reset' && !email) return authMsg('Enter your email first.')
+  authMsg(''); for (const b of ['signin', 'signup', 'forgot']) $(b).disabled = true
+  try {
+    if (kind === 'reset') { await fb(AUTH + 'sendOobCode', { requestType: 'PASSWORD_RESET', email }); authMsg('Password reset email sent. Check your inbox.') }
+    else {
+      const d = await fb(AUTH + (kind === 'signup' ? 'signUp' : 'signInWithPassword'), { email, password, returnSecureToken: true })
+      setSession(d.idToken, d.refreshToken, d.expiresIn); $('pw').value = ''
+      if (kind === 'signup') await fb(AUTH + 'sendOobCode', { requestType: 'VERIFY_EMAIL', idToken: d.idToken }).catch(() => {})
+      await init(true)
+    }
+  } catch (e) { authMsg(e.message) }
+  for (const b of ['signin', 'signup', 'forgot']) $(b).disabled = false
+}
+$('authForm').addEventListener('submit', (e) => { e.preventDefault(); doAuth('signin') })
+$('signup').addEventListener('click', () => doAuth('signup'))
+$('forgot').addEventListener('click', () => doAuth('reset'))
+$('out').addEventListener('click', signOut)
+
+// ---------------------------------------------------------------- bot list
+const statusLabel = { online: 'Online', offline: 'Offline', connecting: 'Connecting', error: 'Error' }
+const fmtUp = (s) => { if (s == null) return 'Not available'; const d = Math.floor(s / 86400), hr = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + 'd ' : '') + (hr || d ? hr + 'h ' : '') + m + 'm' }
+function chip(status) { return h('span', { class: 'chip' }, h('span', { class: 'dot ' + status }), statusLabel[status]) }
+function actionButtons(b, { manage }) {
+  const busy = state.busy.has(b.id)
+  const mk = (label, a, extra) => h('button', { class: 'btn ' + (extra || ''), type: 'button', disabled: busy || !can(a), title: can(a) ? false : 'Not supported by the backend yet', onclick: () => run(b.id, a) }, label)
+  return [
+    manage && h('button', { class: 'btn', type: 'button', onclick: () => openBot(b.id) }, 'MANAGE'),
+    mk('START', 'start'), mk('STOP', 'stop'), mk('RESTART', 'restart'),
+    h('button', { class: 'btn danger', type: 'button', disabled: busy || !can('delete'), title: can('delete') ? false : 'Not supported by the backend yet', onclick: () => askDelete(b) }, 'DELETE')
+  ]
+}
+function info(b) {
+  return h('dl', {}, h('dt', {}, 'Number'), h('dd', {}, b.number ? '+' + b.number : 'Unknown'), h('dt', {}, 'Bot ID'), h('dd', {}, b.id), h('dt', {}, 'Owner'), h('dd', {}, b.ownerName || 'Unknown'))
+}
+function render() {
+  const box = $('bots'); box.replaceChildren()
+  if (state.phase !== 'ready') return box.append(h('div', { class: 'empty' }, 'Bots appear here once the backend is connected.'))
+  if (!state.bots.length) return box.append(h('div', { class: 'empty' }, 'No bots yet. Generate a pair code, then connect your first WhatsApp.'))
+  for (const b of state.bots) box.append(h('article', { class: 'bot' }, h('div', { class: 'top' }, h('h3', {}, b.name), chip(b.status)), info(b), h('div', { class: 'acts' }, actionButtons(b, { manage: true }))))
+}
+
+// ---------------------------------------------------------------- bot actions
+async function run(id, action) {
+  state.busy.add(id); render(); if (state.open === id) openBot(id, true)
+  try {
+    await api('POST', 'action', { id, action })
+    toast(action.toUpperCase() + ' sent')
+  } catch (e) { toast(e.message) }
+  state.busy.delete(id); await refresh()
+}
+function askDelete(b) {
+  $('cTitle').textContent = `Delete ${b.name}?`
+  $('cText').textContent = 'This stops the bot, logs this device out of WhatsApp and deletes its session from Gideon Cloud. You will need a new Session ID to add it again.'
+  const dlg = $('confirm'); dlg.showModal()
+  $('cNo').onclick = () => dlg.close()
+  $('cYes').onclick = async () => {
+    dlg.close(); state.busy.add(b.id); render()
+    try { await api('DELETE', 'remove', { id: b.id }); state.removed.add(b.id); toast('Bot deleted'); if (state.open === b.id) closeBot() } catch (e) { toast(e.message) }
+    state.busy.delete(b.id); await refresh()
+  }
+}
+
+// ---------------------------------------------------------------- manage drawer
+async function openBot(id, quiet) {
+  const b = state.bots.find((x) => x.id === id); if (!b) return closeBot()
+  state.open = id
+  const sheet = $('sheet')
+  const logs = state.caps?.logs ? h('pre', { id: 'logs', 'aria-label': 'Bot logs' }, 'Loading logs…') : h('p', { style: 'color:var(--dim)' }, 'Logs are not supported by the backend yet.')
+  sheet.replaceChildren(
+    h('div', { class: 'head' }, h('h2', {}, b.name), h('button', { class: 'btn ghost', type: 'button', 'data-close': true, onclick: closeBot }, 'CLOSE')),
+    h('p', {}, chip(b.status)),
+    b.error && h('p', { class: 'err' }, b.error),
+    info(b),
+    h('dl', {}, h('dt', {}, 'Uptime'), h('dd', {}, b.status === 'online' ? fmtUp(b.uptimeSeconds) : 'Not running')),
+    h('div', { class: 'acts' }, actionButtons(b, { manage: false })),
+    h('h3', { style: 'margin:22px 0 8px;font-size:15px' }, 'Logs'), logs)
+  $('drawer').classList.add('open'); $('drawer').setAttribute('aria-hidden', 'false')
+  clearInterval(state.logTimer)
+  if (state.caps?.logs) { pullLogs(id); state.logTimer = setInterval(() => pullLogs(id), 5000) }
+  if (!quiet) sheet.querySelector('button')?.focus()
+}
+async function pullLogs(id) {
+  try {
+    const r = await api('GET', 'logs', { id }); const el = $('logs'); if (!el || state.open !== id) return
+    el.textContent = (Array.isArray(r.lines) ? r.lines.slice(-200).map(String).join('\n') : '') || 'No log output yet.'; el.scrollTop = el.scrollHeight
+  } catch { const el = $('logs'); if (el) el.textContent = 'Logs unavailable.' }
+}
+function closeBot() { state.open = null; clearInterval(state.logTimer); $('drawer').classList.remove('open'); $('drawer').setAttribute('aria-hidden', 'true') }
+$('drawer').addEventListener('click', (e) => { if (e.target.hasAttribute('data-close')) closeBot() })
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.open) closeBot() })
+
+// ---------------------------------------------------------------- connect form
+const field = { sid: $('sid'), own: $('own'), num: $('num') }
+function setErr(k, text) { $('e-' + k).textContent = text || (k === 'num' ? 'Country code, no + or spaces.' : ''); field[k].classList.toggle('bad', !!text) }
+function formMsg(text, bad) { const m = $('formMsg'); m.textContent = text || ''; m.classList.toggle('show', !!text); m.classList.toggle('bad', !!bad) }
+function validate() {
+  const sid = field.sid.value.trim(), own = field.own.value.trim(), num = field.num.value.replace(/\D/g, '')
+  let ok = true
+  if (!/^Gideon~\S{16,}$/.test(sid)) { setErr('sid', 'Paste the full Session ID that starts with Gideon~'); ok = false } else setErr('sid')
+  if (!own) { setErr('own', 'Enter the owner name.'); ok = false } else setErr('own')
+  if (num.length < 8 || num.length > 15) { setErr('num', 'Enter 8 to 15 digits with the country code.'); ok = false } else setErr('num')
+  return ok ? { sessionId: sid, ownerName: own, ownerNumber: num } : null
+}
+$('form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  if (state.phase !== 'ready') return formMsg('Sign in first.', true)
+  const payload = validate(); if (!payload) return
+  const btn = $('go'); btn.disabled = true; btn.textContent = 'CONNECTING…'; formMsg('Sending to the backend…')
+  try {
+    const r = await api('POST', 'connect', {}, payload)
+    field.sid.value = ''                       // the credential never lingers in the page once sent
+    const bot = r && r.ok !== false && r.bot ? clean(r.bot) : null
+    if (!bot || !bot.id) throw new Error('The backend did not confirm a bot. Nothing was connected.')
+    upsert(bot); render()
+    await confirmOnline(bot.id)
+  } catch (err) {
+    formMsg(err.message, true)
+  } finally {
+    payload.sessionId = ''; btn.textContent = 'CONNECT GIDEON'; btn.disabled = state.phase !== 'ready'
+  }
+})
+function upsert(bot) { const i = state.bots.findIndex((b) => b.id === bot.id); if (i >= 0) state.bots[i] = bot; else state.bots.push(bot) }
+// "Connected" is only ever shown when the backend itself reports the bot online.
+async function confirmOnline(id) {
+  for (let i = 0; i < 30; i++) {
+    let b
+    try { const r = await api('GET', 'bot', { id }); b = clean(r.bot || r) } catch { b = null }
+    if (b && b.id) { upsert(b); render() }
+    if (b?.status === 'online') { formMsg(`${b.name} is online.`); field.own.value = ''; field.num.value = ''; return }
+    if (b?.status === 'error') throw new Error(b.error || 'WhatsApp rejected this session. Generate a new Session ID and try again.')
+    formMsg('Waiting for WhatsApp to confirm the login…')
+    await new Promise((r) => setTimeout(r, 2000))
+  }
+  throw new Error('No confirmation from WhatsApp yet. Check the bot status in My bots before retrying.')
+}
+$('add').addEventListener('click', () => { formMsg(''); for (const k in field) { field[k].value = ''; setErr(k) } $('connectCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); field.sid.focus() })
+
+init()
+setInterval(() => { if (!document.hidden) refresh() }, 10000)
+})()
+</script>
+</body>
+</html>
