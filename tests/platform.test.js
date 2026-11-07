@@ -139,7 +139,7 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
 
   // ---------------------------------------------------------------- manual Premium ID (works without Paystack)
   let manualId
-  await t('admin can issue a Premium ID without Paystack (format GID-nnnnnn)', async () => { const r = (await A('POST', '/premium/grant', { days: 30, ownerNumber: '2348000000001' })).body; assert.match(r.id, /^GID-\d{6}$/); manualId = r.id })
+  await t('admin can issue a Premium ID without Paystack (format GID-XXXX-XXXX-XXXX)', async () => { const r = (await A('POST', '/premium/grant', { days: 30, ownerNumber: '2348000000001' })).body; assert.match(r.id, /^GID-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/); manualId = r.id })
   await t('invalid Premium ID is rejected', async () => { const r = await R('POST', '/premium/claim', { installId: inst.installId, token: inst.token, premiumId: 'GID-000000' }); assert.strictEqual(r.status, 400); assert.strictEqual(r.body.error, 'INVALID_ID') })
   await t('malformed Premium ID is rejected', async () => assert.strictEqual((await R('POST', '/premium/claim', { installId: inst.installId, token: inst.token, premiumId: 'hello' })).body.error, 'INVALID_ID'))
   await t('valid Premium ID binds to the installation and unlocks premium commands', async () => {
@@ -171,6 +171,7 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
     await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: a1 }); await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: a2 })
     assert.strictEqual((await db.collection('premiumIds').doc(a1).get()).data().boundInstallId, null); assert.strictEqual((await authz(x, 'gideonai')).allow, true)
   })
+  await t('old 6-digit IDs still pass validation, malformed ones do not', async () => { const x = await reg('2347000000011'); assert.strictEqual((await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: 'GID-123456' })).body.error, 'INVALID_ID'); assert.strictEqual((await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: 'GID-ABCD-EFGH' })).status, 400); assert.strictEqual((await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: 'GID-AAAA-0000-1111' })).status, 400) })
   await t('claim attempts are rate limited per installation', async () => { const x = await reg('2347000000007'); let r; for (let i = 0; i < 10; i++) r = await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: 'GID-111111' }); assert.strictEqual(r.status, 429) })
   await t('expired Premium ID: blocked with EXPIRED', async () => {
     const e = await reg('2346000000006'); const id = (await A('POST', '/premium/grant', { days: 1 })).body.id
@@ -201,7 +202,7 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
   await t('plans with price 0 are not purchasable', async () => { const r = (await R('POST', '/premium/checkout', { installId: inst.installId, token: inst.token, plan: 'monthly', email: 'a@b.co' })).body; assert.strictEqual(r.error, 'PLAN_UNAVAILABLE') })
   await setSettings({ plans: [{ id: 'monthly', name: 'Gideon Premium (30 days)', days: 30, amountNaira: 2500 }] })
   let buyer, ref
-  await t('checkout needs a valid email', async () => { buyer = await reg('2348111111111'); assert.strictEqual((await R('POST', '/premium/checkout', { installId: buyer.installId, token: buyer.token, plan: 'monthly', email: 'nope' })).body.error, 'EMAIL_REQUIRED') })
+  await t('checkout works without an email (Paystack gets a placeholder)', async () => { buyer = await reg('2348111111111'); const r = (await R('POST', '/premium/checkout', { installId: buyer.installId, token: buyer.token, plan: 'monthly', email: 'nope' })).body; assert.strictEqual(r.ok, true); assert.match(paystack.last.email, /^2348111111111@gideon-bot\.app$/) })
   await t('checkout creates a pending payment with the amount decided by the SERVER (client amount ignored)', async () => {
     const r = (await R('POST', '/premium/checkout', { installId: buyer.installId, token: buyer.token, plan: 'monthly', email: 'buyer@example.com', amount: 1 })).body
     assert.strictEqual(r.ok, true); ref = r.reference; assert.strictEqual(paystack.last.amount, 250000); assert.match(r.url, /^https:\/\/checkout\.paystack\.com\//)
@@ -216,7 +217,7 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
     paystack.paid[ref].settled = true
     // a new event id so the earlier unconfirmed attempt does not dedupe this one
     const r = await hook({ event: 'charge.success', data: { reference: ref, id: 7 } }); assert.strictEqual(r.status, 200)
-    const p = db.data.payments[ref]; assert.strictEqual(p.processed, true); assert.match(p.premiumId, /^GID-\d{6}$/); grantedId = p.premiumId
+    const p = db.data.payments[ref]; assert.strictEqual(p.processed, true); assert.match(p.premiumId, /^GID-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/); grantedId = p.premiumId
     const pid = db.data.premiumIds[grantedId]; assert.strictEqual(pid.boundInstallId, buyer.installId); assert.strictEqual(pid.ownerNumber, '2348111111111'); assert.ok(pid.expiresAt > Date.now() + 29 * 86400000); expiry1 = pid.expiresAt
     assert.strictEqual((await authz(buyer, 'gideonai')).allow, true)
   })

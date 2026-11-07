@@ -28,7 +28,7 @@ module.exports = [
   },
   {
     name: 'youtube',
-    aliases: ['yt'],
+    aliases: [],
     desc: 'Open Gpraise YouTube',
     category: 'general',
     async run(sock, m) {

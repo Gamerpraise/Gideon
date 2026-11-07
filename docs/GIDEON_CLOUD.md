@@ -58,3 +58,22 @@ Raise `cloud.maxPairedPerBot` in `config.js` when you move to a bigger host.
 - An ID works on ONE WhatsApp at a time. While a bot is online it sends a heartbeat every 5 minutes. If another number tries the same ID meanwhile, the server answers "in use".
 - To use the ID on another number: log the first one out of WhatsApp or delete its bot. The ID is freed immediately (same ID, same expiry). If the first bot just went offline without logging out, it frees itself about 12 minutes after it was last online. STOP in the dashboard does not free it right away.
 - Needs the updated Global Gideon server (`/premium/release`, live-holder check). Deploy the server first, then the bot.
+
+
+## Firebase storage for Cloud users (survives a wiped disk, deleted on logout)
+Set `FIREBASE_SERVICE_ACCOUNT` (the service-account JSON from Firebase console > Project settings > Service accounts, pasted as is, or base64 of it) in the host's environment. Optional: `CLOUD_STORE_KEY` (your own passphrase for the encryption; if you set it, never change it, or old backups cannot be read).
+- Each Cloud user's session and settings are copied, **encrypted**, to Firestore collection `cloudBots` (the data is unreadable without your key). The disk stays the working copy; Firebase is the safety copy.
+- Uploads happen at most once every 10 minutes per user, only when something changed (Firestore free tier allows 20,000 writes a day, which covers well over 30 busy users).
+- On start, any user who is in Firebase but not on the disk (new host, wiped disk) is restored and started automatically. Moving to Oracle = deploy there with the same environment variables and stop the old host first; two hosts running the same session at once makes WhatsApp disconnect it.
+- When a user logs out of WhatsApp or deletes their bot, their session, settings and Firebase copy are deleted, which frees the storage.
+- People a Cloud user paired are NOT copied (they re-pair after a wiped disk).
+- Without `FIREBASE_SERVICE_ACCOUNT` everything works as before, on the disk only.
+
+## Premium plans and `.subscribe`
+Plans are edited in the Global server admin: Subscription Settings > Plans (name, days, price in naira; price 0 = not for sale). `.subscribe` shows them as a numbered list and `.subscribe 2` sends the Paystack link for the second one (an email is optional: `.subscribe 2 me@mail.com` if the buyer wants Paystack's receipt). Premium IDs are now long (`GID-XXXX-XXXX-XXXX`); old 6-digit IDs keep working.
+
+## `.gideonai`
+Asks several AI providers in turn (Gemini if `GEMINI_API_KEY` is set, then two free ones), so one dead service no longer breaks it. A free Gemini key from aistudio.google.com makes it much more reliable. `GEMINI_MODEL` changes the model.
+
+## Downloaders: `.yt <link or search>`, `.ytmp4`, `.play <song or link>`, `.fb <link>`
+They use yt-dlp (found on the PATH, in `YTDLP_PATH`, or downloaded once into `./bin`). Each download works in a temp folder that is deleted as soon as the file was sent, never accumulates, and is limited (`config.downloads`: 2 at a time, 60 MB video, 40 MB audio, 12 / 20 minutes, 20 s between requests per person). Firestore is not used for this: a document there is limited to 1 MiB, so it cannot hold media. If YouTube blocks a datacenter IP ("sign in to confirm you are not a bot"), put a cookies file on the host and set `YTDLP_COOKIES` to its path. Without yt-dlp the old online services are tried as a fallback.

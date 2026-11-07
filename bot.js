@@ -255,7 +255,10 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, parent = '', 
       const on = sock.ev.on.bind(sock.ev)
       sock.ev.on = (evt, fn) => on(evt, (...args) => als.run(ctx, () => fn(...args)))
     }
-    sock.ev.on('creds.update', saveCreds)
+    sock.ev.on('creds.update', (...a) => {
+      saveCreds(...a)
+      if (cloud) manager.cloud.dirty?.(id) // a Cloud user's session changed: copy it to Firebase soon
+    })
 
     const requestCode = async () => {
       if (codeRequested || sock.authState.creds.registered || !pairingNumber) return
@@ -321,7 +324,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, parent = '', 
         followChannel(sock).catch(() => {})
         if (!isSub) devqueue.start(sock)
         if (!isSub) premium.start(manager)
-        if (cloud) premium.startBot(sock, manager)
+        if (cloud) { premium.startBot(sock, manager); manager.cloud.dirty?.(id) }
         if (!isSub && !store.get().devNoticeShown) {
           store.get().devNoticeShown = true
           store.save()

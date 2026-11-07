@@ -21,18 +21,14 @@ module.exports = [
         const related = Array.isArray(ddg.RelatedTopics) ? ddg.RelatedTopics.map((t) => t.Text).filter(Boolean).slice(0, 3).join(' | ') : ''
         context = ddg.AbstractText || ddg.Answer || related || ''
       } catch {}
-      const prompt = context ? `Web search context:\n${context}\n\nQuestion: ${query}\n\nAnswer accurately and concisely, using the web context above when it's relevant.` : query
-      try {
-        const data = await fn.fetchJson(
-          `https://api.siputzx.my.id/api/ai/gpt3?prompt=${encodeURIComponent('You are Gideon, a WhatsApp assistant by Gpraise that fetches current information from the internet to answer accurately, like a search engine.')}&content=${encodeURIComponent(prompt)}`
-        )
-        const answer = data.data || data.result || data.response || data
+      const answer = await require('../aiclient').ask(query, context)
+      if (answer) {
         await m.react('✅')
-        await m.reply(typeof answer === 'string' ? answer : JSON.stringify(answer))
-      } catch {
-        await m.react('❌')
-        await m.reply('Gideon AI is busy. Try again later.')
+        return m.reply(answer)
       }
+      // every AI provider failed: at least show what the web search found
+      await m.react('❌')
+      await m.reply(context ? `Gideon AI is busy right now. Here is what I found online:\n\n${context}` : 'Gideon AI is busy. Try again later.')
     }
   },
   {

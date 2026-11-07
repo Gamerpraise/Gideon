@@ -58,6 +58,8 @@ const config = {
   // this is safe to raise further in config.local.json if your server copes with more.
   // GIDEON CLOUD: the dashboard served at / and its API under /api/cloud. Sign-in is the existing Firebase
   // Authentication project (the same one the server's admin dashboard uses). Override any of this in config.local.json.
+  // .yt / .ytmp4 / .play / .fb (downloader.js): temp files are deleted right after sending; these limits protect RAM, CPU and disk
+  downloads: { parallel: 2, maxVideoMB: 60, maxAudioMB: 40, maxVideoMin: 12, maxAudioMin: 20, cooldownSec: 20, timeoutSec: 150 },
   cloud: {
     enabled: true,
     port: 3000, // process.env.PORT wins (Render, Heroku...)

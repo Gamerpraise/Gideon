@@ -1,5 +1,28 @@
 const yts = require('yt-search')
 const fn = require('../functions')
+const dl = require('../downloader')
+
+// Try the local downloader first (temp file, deleted right after sending). Returns true when the request was handled
+// (sent, or the person was told why not) and false when the old online-API route should be tried instead.
+async function sendLocal(sock, m, url, kind, build) {
+  let job
+  try {
+    job = await dl.download(url, kind, { user: m.sender })
+  } catch (err) {
+    if (err instanceof dl.DownloadError && err.message !== 'NO_LOCAL_DOWNLOADER') {
+      await m.reply(err.message)
+      return true
+    }
+    return false
+  }
+  try {
+    await sock.sendMessage(m.chat, build(job), { quoted: { key: m.key, message: m.message } })
+    return true
+  } finally {
+    job.cleanup()
+  }
+}
+const safeName = (t) => String(t || 'media').replace(/[\\/:*?"<>|\n\r]+/g, ' ').trim().slice(0, 80) || 'media'
 
 module.exports = [
   {
@@ -13,6 +36,13 @@ module.exports = [
       const search = await yts(text)
       const video = search.videos[0]
       if (!video) return m.reply('No result found.')
+      const handled = await sendLocal(sock, m, video.url, 'audio', (j) => ({
+        audio: { url: j.file },
+        mimetype: j.mime,
+        fileName: `${safeName(j.title || video.title)}.${j.file.split('.').pop()}`,
+        contextInfo: { externalAdReply: { title: j.title || video.title, body: video.author?.name || 'YouTube', thumbnailUrl: video.thumbnail, sourceUrl: video.url, mediaType: 1 } }
+      }))
+      if (handled) return
       try {
         const media = await fn.ytdl(video.url, 'audio')
         await sock.sendMessage(m.chat, {
@@ -36,7 +66,7 @@ module.exports = [
   },
   {
     name: 'ytmp4',
-    aliases: ['video', 'ytv'],
+    aliases: ['video', 'ytv', 'yt'], // .yt <link or search> downloads the video ('yt' used to open the channel link instead)
     desc: 'Download YouTube video',
     category: 'download',
     async run(sock, m, { text }) {
@@ -45,6 +75,7 @@ module.exports = [
       try {
         const query = fn.isUrl(text) ? text : (await yts(text)).videos[0]?.url
         if (!query) return m.reply('No result found.')
+        if (await sendLocal(sock, m, query, 'video', (j) => ({ video: { url: j.file }, caption: j.title || 'YouTube video', mimetype: 'video/mp4' }))) return
         const media = await fn.ytdl(query, 'video')
         await sock.sendMessage(m.chat, {
           video: { url: media.url },
@@ -112,8 +143,10 @@ module.exports = [
     category: 'download',
     async run(sock, m, { text }) {
       if (!text) return m.reply('Example: .fb https://fb.watch/xxxx')
+      const link = text.trim().split(/\s+/)[0]
+      if (await sendLocal(sock, m, link, 'video', (j) => ({ video: { url: j.file }, caption: j.title && j.title !== 'media' ? j.title : 'Facebook download', mimetype: 'video/mp4' }))) return
       try {
-        const data = await fn.fetchJson(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(text)}`)
+        const data = await fn.fetchJson(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(link)}`)
         const url = data.result?.url || data.data?.url || data.url
         if (!url) return m.reply('Unable to download that Facebook video.')
         await sock.sendMessage(m.chat, { video: { url }, caption: 'Facebook download' })

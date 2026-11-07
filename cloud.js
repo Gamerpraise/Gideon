@@ -66,7 +66,7 @@ async function verifyFirebaseToken(token, projectId, getKey = googleKey) {
 }
 
 // ------------------------------------------------------------------ the service
-function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.botName, verify, log = console.log }) {
+function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.botName, verify, log = console.log, store = require('./cloudstore').fromEnv() }) {
   const sessionsDir = path.join(dataDir, 'sessions')
   const metaFile = path.join(dataDir, 'bots.json')
   fs.mkdirSync(sessionsDir, { recursive: true, mode: 0o700 })
@@ -90,6 +90,50 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
   }
   setInterval(() => { const now = Date.now(); for (const [k, h] of hits) if (h.reset < now) hits.delete(k) }, 60e3).unref?.()
 
+  // ---- Firebase copy (cloudstore.js): every user's session + settings, encrypted. Disk stays the working copy; Firebase is
+  // what survives a wiped disk or a move to another host, and it is deleted when the user logs out or deletes their bot.
+  const BACKUP_DELAY = cfg.backupDelayMs ?? 10 * 60 * 1000 // at most one upload per bot per 10 minutes (Firestore free tier: 20k writes/day)
+  const dirtyTimers = new Map()
+  const inflight = new Map()
+  function snapshot(id) {
+    require('./store').flush() // the user's settings file is written first
+    const files = {}
+    let total = 0
+    for (const name of fs.readdirSync(dirOf(id))) {
+      if (name.endsWith('.tmp')) continue
+      const f = path.join(dirOf(id), name)
+      const st = fs.statSync(f)
+      if (!st.isFile()) continue
+      total += st.size
+      if (total > 8 * 1024 * 1024) throw new Error('session too large to back up')
+      files[name] = fs.readFileSync(f)
+    }
+    return files
+  }
+  function backupNow(id) {
+    if (!store || !meta.bots[id] || inflight.has(id)) return inflight.get(id)
+    const p = Promise.resolve()
+      .then(() => store.put(id, meta.bots[id], snapshot(id)))
+      .catch((err) => log(`[cloud] Firebase backup of ${id} failed: ${err.message}`))
+      .finally(() => inflight.delete(id))
+    inflight.set(id, p)
+    return p
+  }
+  function dirty(id, delay = BACKUP_DELAY) {
+    if (!store || !meta.bots[id] || dirtyTimers.has(id)) return
+    const t = setTimeout(() => { dirtyTimers.delete(id); backupNow(id) }, delay)
+    t.unref?.()
+    dirtyTimers.set(id, t)
+  }
+  async function forget(id) { // nothing of this user may stay in Firebase
+    clearTimeout(dirtyTimers.get(id)); dirtyTimers.delete(id)
+    if (!store) return
+    await Promise.resolve(inflight.get(id)).catch(() => {})
+    await store.remove(id).catch((err) => log(`[cloud] could not delete ${id} from Firebase: ${err.message}`))
+  }
+  manager.cloud.dirty = (id) => dirty(id)
+  if (store) setInterval(() => { for (const id of Object.keys(meta.bots)) dirty(id) }, 30 * 60 * 1000).unref?.() // key files change without a creds update
+
   const busy = new Set() // per-bot / per-number locks
   // WhatsApp told us the user logged this device out: the session is useless now, so delete it from disk and
   // forget the bot. (Called by bot.js. A user pressing STOP never reaches this; STOP keeps the session.)
@@ -101,6 +145,7 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
     fs.rmSync(dirOf(id), { recursive: true, force: true })
     delete meta.bots[id]
     save()
+    await forget(id)
     log(`[cloud] bot ${id} logged out of WhatsApp, session deleted`)
   }
   const mine = (uid) => Object.values(meta.bots).filter((b) => b.uid === uid)
@@ -153,6 +198,7 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
         meta.bots[id] = { id, uid: user.uid, ownerName, number: session.number, createdAt: Date.now(), autostart: true }
         save()
         await manager.cloud.open(id, dirOf(id))
+        dirty(id, 20000)
         log(`[cloud] bot ${id} added`) // no number, no session data in logs
         return { status: 201, body: { ok: true, bot: view(meta.bots[id]) } }
       } catch (err) {
@@ -196,6 +242,7 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
         require('./context').drop(id)
     fs.rmSync(dirOf(id), { recursive: true, force: true })
         delete meta.bots[id]; save()
+        await forget(id)
         return { status: 200, body: { ok: true } }
       } finally { busy.delete(id) }
     },
@@ -280,7 +327,31 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
   const server = http.createServer((req, res) => { handle(req, res).catch(() => { try { res.writeHead(500); res.end() } catch {} }) })
 
   // bring back every bot that was running before a restart / update, staggered like paired users
+  // a new or wiped host: bring back every user whose session is in Firebase but not on this disk
+  async function restoreFromStore() {
+    if (!store) return
+    let ids
+    try { ids = await store.list() } catch (err) { log(`[cloud] could not read Firebase: ${err.message}`); return }
+    for (const { id } of ids) {
+      if (!ID_RE.test(id) || (meta.bots[id] && fs.existsSync(path.join(dirOf(id), 'creds.json')))) continue
+      try {
+        const b = await store.get(id)
+        const rec = b?.rec
+        if (!b || !b.files['creds.json'] || !rec || rec.id !== id || typeof rec.uid !== 'string' || !/^\d{8,15}$/.test(String(rec.number))) continue
+        if (Object.values(meta.bots).some((x) => x.id !== id && x.number === rec.number)) continue
+        fs.mkdirSync(dirOf(id), { recursive: true, mode: 0o700 })
+        for (const [name, buf] of Object.entries(b.files)) if (/^[\w.@-]+$/.test(name) && !name.includes('..')) fs.writeFileSync(path.join(dirOf(id), name), buf, { mode: 0o600 })
+        meta.bots[id] = rec
+        save()
+        log(`[cloud] restored ${id} from Firebase`)
+      } catch (err) { log(`[cloud] could not restore ${id}: ${err.message}`) }
+    }
+  }
+
   function restore() {
+    return store ? restoreFromStore().then(restoreLocal) : restoreLocal()
+  }
+  function restoreLocal() {
     let delay = 6000
     for (const rec of Object.values(meta.bots)) {
       if (!rec.autostart || !fs.existsSync(path.join(dirOf(rec.id), 'creds.json'))) continue
@@ -288,7 +359,7 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
       delay += 2500
     }
   }
-  return { server, handle, restore, meta: () => meta }
+  return { server, handle, restore, meta: () => meta, backupNow, forget }
 }
 
 function start(manager) {
