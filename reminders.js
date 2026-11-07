@@ -1,4 +1,5 @@
 const store = require('./store')
+const als = require('./context')
 const config = require('./config')
 
 // "30m", "2h", "1h30m", "45s", "2d"  ->  milliseconds from now
@@ -39,28 +40,35 @@ function add(entry) {
   return id
 }
 
+// one pass over ONE database: the host's, or (inside a Cloud context) a Cloud user's own
+async function sweep(manager) {
+  const db = store.get()
+  if (!db.reminders?.length) return
+  const now = Date.now()
+  const due = db.reminders.filter((r) => r.at <= now)
+  if (!due.length) return
+  for (const r of due) {
+    const bot = manager.get(r.bot)
+    if (!bot?.sock?.user) {
+      if (now - r.at > 86400000) db.reminders = db.reminders.filter((x) => x.id !== r.id)
+      continue // bot offline right now, try again next tick
+    }
+    db.reminders = db.reminders.filter((x) => x.id !== r.id)
+    try {
+      if (r.kind === 'send') await bot.sock.sendMessage(r.jid, { text: r.text })
+      else await bot.sock.sendMessage(r.jid, { text: `Reminder @${String(r.user).split('@')[0]}\n${r.text}`, mentions: [r.user] })
+    } catch (err) {
+      console.log('[reminders]', err.message)
+    }
+  }
+  store.save()
+}
+
 function start(manager) {
   setInterval(async () => {
-    const db = store.get()
-    if (!db.reminders?.length) return
-    const now = Date.now()
-    const due = db.reminders.filter((r) => r.at <= now)
-    if (!due.length) return
-    for (const r of due) {
-      const bot = manager.get(r.bot)
-      if (!bot?.sock?.user) {
-        if (now - r.at > 86400000) db.reminders = db.reminders.filter((x) => x.id !== r.id)
-        continue // bot offline right now, try again next tick
-      }
-      db.reminders = db.reminders.filter((x) => x.id !== r.id)
-      try {
-        if (r.kind === 'send') await bot.sock.sendMessage(r.jid, { text: r.text })
-        else await bot.sock.sendMessage(r.jid, { text: `Reminder @${String(r.user).split('@')[0]}\n${r.text}`, mentions: [r.user] })
-      } catch (err) {
-        console.log('[reminders]', err.message)
-      }
-    }
-    store.save()
+    await sweep(manager).catch((err) => console.log('[reminders]', err.message))
+    // Cloud users keep their reminders in their own database
+    for (const ctx of als.all()) await als.run(ctx, () => sweep(manager)).catch((err) => console.log('[reminders]', err.message))
   }, 15000)
 }
 

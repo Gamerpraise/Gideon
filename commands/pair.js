@@ -9,7 +9,6 @@ module.exports = [
     desc: 'Owner: give a number a pairing code (and QR) to run Gideon on their WhatsApp',
     category: 'owner',
     owner: true,
-    cloudMain: true,
     dangerous: true,
     async run(sock, m, { args, config }) {
       if (!args[0]) return m.reply(`Example: ${config.prefix}pair 2348012345678\n(country code, no + or spaces)`)
@@ -43,7 +42,6 @@ module.exports = [
     desc: 'Owner: list paired users',
     category: 'owner',
     owner: true,
-    cloudMain: true,
     async run(sock, m, { config }) {
       const subs = sock.isCloud ? sock.manager.listChildren(sock.botId) : sock.manager.listSubs()
       if (!subs.length) return m.reply(`No paired users yet. Use ${config.prefix}pair <number>`)
@@ -57,7 +55,6 @@ module.exports = [
     desc: 'Owner: remove a paired user',
     category: 'owner',
     owner: true,
-    cloudMain: true,
     dangerous: true,
     async run(sock, m, { args }) {
       const id = String(args[0] || '').replace(/\D/g, '')

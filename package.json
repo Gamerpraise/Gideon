@@ -9,7 +9,7 @@
     "test": "node tests/platform.test.js && node tests/bot.test.js",
     "registry": "node scripts/gen-registry.js",
     "test:ui": "node tests/ui.test.js",
-    "test:cloud": "node tests/cloud.test.js && node tests/cloud-ui.test.js && node tests/cloud-engine.test.js && node tests/cloud-pair.test.js"
+    "test:cloud": "node tests/cloud.test.js && node tests/cloud-ui.test.js && node tests/cloud-engine.test.js && node tests/cloud-pair.test.js && node tests/cloud-isolation.test.js"
   },
   "engines": {
     "node": ">=20"

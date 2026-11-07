@@ -156,11 +156,11 @@ module.exports = [
     category: 'owner',
     owner: true,
     async run(sock, m, { text, prefix }) {
-      if (sock.isSub) return m.reply('This command is only available on the main Gideon bot.')
+      if (sock.isSub && !sock.isCloud) return m.reply('This command is only available on the main Gideon bot.')
       const content = await resolveContent(m, text)
       if (!content) return m.reply(`Example: ${prefix}postpairstatus Good morning everyone\nor reply to an image/video with ${prefix}postpairstatus caption`)
 
-      const subs = sock.manager.listSubs()
+      const subs = sock.isCloud ? sock.manager.listChildren(sock.botId) : sock.manager.listSubs()
       if (!subs.length) return m.reply('No paired accounts yet. Use .pair <number>')
       let ok = 0
       let failed = 0

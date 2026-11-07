@@ -16,6 +16,7 @@ const { styledContent, box, contentToMessage } = require('./style')
 const net = require('./network')
 const devqueue = require('./devqueue')
 const premium = require('./premium')
+const als = require('./context')
 const { sendButtons } = require('./buttons')
 
 const logger = pino({ level: 'silent' })
@@ -247,6 +248,13 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, parent = '', 
     })
     ctl.sock = sock
     patchSocket(sock)
+    if (cloud || parent) {
+      // Gideon Cloud: everything this bot's events run (and start) uses its owner's own settings and database
+      // (people it paired follow it). The host's bot and the host's paired people stay on the shared ones.
+      const ctx = als.forBot(cloud ? id : parent)
+      const on = sock.ev.on.bind(sock.ev)
+      sock.ev.on = (evt, fn) => on(evt, (...args) => als.run(ctx, () => fn(...args)))
+    }
     sock.ev.on('creds.update', saveCreds)
 
     const requestCode = async () => {

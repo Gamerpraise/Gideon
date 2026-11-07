@@ -97,6 +97,7 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
   manager.cloud.onLoggedOut = async (id) => {
     if (!meta.bots[id]) return
     await manager.removeChildren(id) // the people this bot paired go with it
+    require('./context').drop(id)
     fs.rmSync(dirOf(id), { recursive: true, force: true })
     delete meta.bots[id]
     save()
@@ -155,7 +156,8 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
         log(`[cloud] bot ${id} added`) // no number, no session data in logs
         return { status: 201, body: { ok: true, bot: view(meta.bots[id]) } }
       } catch (err) {
-        fs.rmSync(dirOf(id), { recursive: true, force: true })
+        require('./context').drop(id)
+    fs.rmSync(dirOf(id), { recursive: true, force: true })
         delete meta.bots[id]; save()
         return { status: 500, body: { error: 'Could not start this bot. Nothing was saved.' } }
       } finally { busy.delete('num:' + session.number) }
@@ -191,7 +193,8 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
       busy.add(id)
       try {
         await manager.cloud.close(id).catch(() => {})
-        fs.rmSync(dirOf(id), { recursive: true, force: true })
+        require('./context').drop(id)
+    fs.rmSync(dirOf(id), { recursive: true, force: true })
         delete meta.bots[id]; save()
         return { status: 200, body: { ok: true } }
       } finally { busy.delete(id) }

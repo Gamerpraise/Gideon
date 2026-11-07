@@ -24,6 +24,12 @@ const reject = async (p, re) => { try { await p } catch (e) { assert(re.test(e.m
   const dirA = mk(), dirB = mk()
   const a = await manager.cloud.open('cb_aaaaaaaaaaaa', dirA); await manager.cloud.open('cb_bbbbbbbbbbbb', dirB)
   assert.strictEqual(a.sock === null || a.cloud, true)
+  // events of a Cloud bot (and of the people it pairs) run in that user's own context
+  const store = require(require('path').join(ROOT, 'store'))
+  for (let i = 0; i < 100 && !manager.get('cb_aaaaaaaaaaaa').sock; i++) await new Promise((r) => setTimeout(r, 20))
+  const asock = manager.get('cb_aaaaaaaaaaaa').sock
+  let seen = null; asock.ev.on('probe', () => { seen = store.get() }); asock.ev.emit('probe')
+  assert.strictEqual(seen, store.bot('cb_aaaaaaaaaaaa').data, 'Cloud bot events use the user\'s own database'); assert.notStrictEqual(seen, store.root())
   const numbers = ['2348011111111', '2348022222222', '2348033333333', '2348044444444']
   for (const n of numbers.slice(0, 3)) { const r = await manager.pair(n, { parent: 'cb_aaaaaaaaaaaa' }); assert.strictEqual(r.code, 'ABCD1234') }
   assert.strictEqual(manager.listChildren('cb_aaaaaaaaaaaa').length, 3)
@@ -33,6 +39,9 @@ const reject = async (p, re) => { try { await p } catch (e) { assert(re.test(e.m
   await manager.pair(numbers[3], { parent: 'cb_bbbbbbbbbbbb' })                              // another Cloud bot has its own 3
   assert.strictEqual(JSON.parse(fs.readFileSync(`${ROOT}/sessions/${numbers[0]}/parent.json`, 'utf8')).parent, 'cb_aaaaaaaaaaaa')
   assert.strictEqual(manager.get(numbers[0]).parent, 'cb_aaaaaaaaaaaa')
+  let ksock = manager.get(numbers[0]).sock; for (let i = 0; i < 100 && !ksock; i++) { await new Promise((r) => setTimeout(r, 20)); ksock = manager.get(numbers[0]).sock }
+  let kid = null; ksock.ev.on('probe', () => { kid = store.get() }); ksock.ev.emit('probe')
+  assert.strictEqual(kid, store.bot('cb_aaaaaaaaaaaa').data, 'paired people follow their Cloud bot')
   await manager.cloud.close('cb_aaaaaaaaaaaa')                                              // deleting the bot removes the people it paired
   assert.strictEqual(manager.listChildren('cb_aaaaaaaaaaaa').length, 0); assert(!fs.existsSync(`${ROOT}/sessions/${numbers[0]}`))
   assert.strictEqual(manager.listChildren('cb_bbbbbbbbbbbb').length, 1)

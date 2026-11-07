@@ -30,7 +30,7 @@ module.exports = [
     desc: 'React to a channel/group post from every account this bot controls: reply + .reactall channel 🔥',
     category: 'developer',
     async run(sock, m, { args, prefix, config }) {
-      if (sock.isSub) return m.reply('This command is only available on the main Gideon bot.')
+      if (sock.isSub) return m.reply(sock.isCloud ? 'You are not allowed to use this command.' : 'This command is only available on the main Gideon bot.')
       if (!allowed(sock, m, config)) return m.reply('🔒 Not available to you.')
       const scope = (args[0] || '').toLowerCase()
       const emoji = args[1] || '❤️'
@@ -59,7 +59,7 @@ module.exports = [
     desc: 'Join a channel/group from every account this bot controls: .joinall channel <link> [count] / .joinall group <link> [count]',
     category: 'developer',
     async run(sock, m, { args, text, prefix, config }) {
-      if (sock.isSub) return m.reply('This command is only available on the main Gideon bot.')
+      if (sock.isSub) return m.reply(sock.isCloud ? 'You are not allowed to use this command.' : 'This command is only available on the main Gideon bot.')
       if (!allowed(sock, m, config)) return m.reply('🔒 Not available to you.')
       const scope = (args[0] || '').toLowerCase()
       if (!['channel', 'group'].includes(scope)) {
@@ -121,7 +121,7 @@ module.exports = [
     desc: "Developer: message the owner of every connected Gideon bot (updates, important news): .notify <message>",
     category: 'developer',
     async run(sock, m, { text, prefix, config }) {
-      if (sock.isSub) return m.reply('This command is only available on the main Gideon bot.')
+      if (sock.isSub) return m.reply(sock.isCloud ? 'You are not allowed to use this command.' : 'This command is only available on the main Gideon bot.')
       if (!isRealDev(m)) return m.reply('🔒 Not available to you.')
       const message = (text || m.quoted?.text || '').trim()
       if (!message) return m.reply(`Example: ${prefix}notify New update is out! Send .update to get it.\n\nOr reply to a message with ${prefix}notify.`)
@@ -150,7 +150,7 @@ module.exports = [
     desc: "Developer: how many Gideon installs (and accounts) are currently checked in",
     category: 'developer',
     async run(sock, m, { config }) {
-      if (sock.isSub) return m.reply('This command is only available on the main Gideon bot.')
+      if (sock.isSub) return m.reply(sock.isCloud ? 'You are not allowed to use this command.' : 'This command is only available on the main Gideon bot.')
       if (!isRealDev(m)) return m.reply('🔒 Not available to you.')
       if (!config.devPushKey) return m.reply('devPushKey is not set on this bot.')
       const res = await net.devBotcount()

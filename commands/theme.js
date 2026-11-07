@@ -17,7 +17,7 @@ module.exports = [
     category: 'owner',
     owner: true,
     async run(sock, m, { args }) {
-      if (sock.isSub) return m.reply('Only the main Gideon owner can change the theme.')
+      if (sock.isSub && !sock.isCloud) return m.reply('Only the main Gideon owner can change the theme.')
       const q = (args[0] || '').toLowerCase()
       if (!q) {
         // sent raw so the preview is not wrapped in the active theme

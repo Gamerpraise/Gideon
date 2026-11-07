@@ -107,4 +107,21 @@ if (process.env.PREFIX) config.prefix = process.env.PREFIX
 config.ownerIsDefault = ownerIsDefault
 config.ownerNumber = String(config.ownerNumber).replace(/\D/g, '')
 
-module.exports = config
+// Gideon Cloud: these settings belong to each Cloud user (see context.js). Outside a Cloud context everything is the one shared config.
+const als = require('./context')
+const PER_BOT = ['prefix', 'autoRead', 'autoTyping', 'alwaysOnline', 'autoRejectCall', 'autoStatusView', 'autoStatusReact', 'autoSaveStatus', 'buttonMode', 'allowDeveloperActions']
+const BASE = {}
+for (const k of PER_BOT) BASE[k] = config[k] // defaults, before the host's own saved choices are applied at boot
+module.exports = new Proxy(config, {
+  get(target, key, recv) {
+    const c = als.getStore()
+    if (c && typeof key === 'string' && PER_BOT.includes(key)) return key in c.config ? c.config[key] : BASE[key]
+    return Reflect.get(target, key, recv)
+  },
+  set(target, key, value) {
+    const c = als.getStore()
+    if (c && typeof key === 'string' && PER_BOT.includes(key)) c.config[key] = value
+    else target[key] = value
+    return true
+  }
+})

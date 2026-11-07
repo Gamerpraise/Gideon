@@ -139,9 +139,7 @@ async function handleMessage(sock, msg) {
     const db = store.get()
     // group protection runs first: a muted or private-mode bot must still delete links
     if (m.isGroup && (await guard.antilink(sock, m).catch((err) => { console.log('[antilink]', err.message); return false }))) return
-    // a Cloud bot has its own public/private switch; everyone else follows the host's
-    const isOpen = sock.isCloud ? !(db.cloudPrivate || {})[sock.botId] : db.public
-    if (!isOpen && !m.isOwner) return
+    if (!db.public && !m.isOwner) return
 
     if (m.isGroup) {
       const groupSettings = {
@@ -195,8 +193,14 @@ async function handleMessage(sock, msg) {
     if (command.dangerous && config.ownerIsDefault && !m.fromMe) {
       return m.reply('For safety this command only works from the bot account itself until you set your own owner number in config.local.json (see README).')
     }
-    if (command.owner && sock.isSub && !command.subSafe && !(sock.isCloud && command.cloudMain)) {
-      return m.reply('This command is only available on the main Gideon bot.')
+    // paired people only get what is marked subSafe; a Gideon Cloud user is the main bot of their own number, so they get
+    // every owner command except the developer ones (command.dev)
+    if (command.owner && sock.isSub) {
+      if (sock.isCloud) {
+        if (command.dev) return m.reply('You are not allowed to use this command.')
+      } else if (!command.subSafe) {
+        return m.reply('This command is only available on the main Gideon bot.')
+      }
     }
     if (command.group && !m.isGroup) {
       return m.reply('This command can only be used in groups.')

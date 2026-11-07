@@ -8,6 +8,7 @@ module.exports = {
   desc: 'Owner: update the bot from GitHub',
   category: 'owner',
   owner: true,
+    dev: true, // host-only: a Gideon Cloud user's own bot cannot run it
   dangerous: true,
   async run(sock, m, { args, config, store }) {
     const mode = (args[0] || '').toLowerCase()

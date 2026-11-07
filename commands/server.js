@@ -32,6 +32,7 @@ module.exports = [
     desc: 'Owner: free disk space (.clear, or .clear deep)',
     category: 'owner',
     owner: true,
+    dev: true, // host-only: a Gideon Cloud user's own bot cannot run it
     async run(sock, m, { args, config }) {
       const deep = (args[0] || '').toLowerCase() === 'deep'
       await m.react('⏳')

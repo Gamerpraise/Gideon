@@ -10,15 +10,10 @@ module.exports = [
     desc: 'Set bot to public mode',
     category: 'owner',
     owner: true,
-    cloudMain: true,
     async run(sock, m, { store }) {
       // The one owner command co-owners still can't use (see handler.js) - .self/.private is a
       // lockdown the main owner can set, so a co-owner being able to undo it would defeat the
       // point of it being a lockdown. Everything else a co-owner can now do, same as the owner.
-      if (sock.isCloud) {
-        store.set('cloudPrivate', { ...(store.get().cloudPrivate || {}), [sock.botId]: false })
-        return m.reply('Bot is now public.')
-      }
       if (!m.isMainOwner) return m.reply('🔒 Only the main owner can take the bot out of private mode.')
       store.set('public', true)
       await m.reply('Bot is now public.')
@@ -30,10 +25,8 @@ module.exports = [
     desc: 'Set bot to private mode',
     category: 'owner',
     owner: true,
-    cloudMain: true,
     async run(sock, m, { store }) {
-      if (sock.isCloud) store.set('cloudPrivate', { ...(store.get().cloudPrivate || {}), [sock.botId]: true })
-      else store.set('public', false)
+      store.set('public', false)
       await m.reply('Bot is now private.')
     }
   },
@@ -222,6 +215,7 @@ module.exports = [
     desc: 'Restart the bot',
     category: 'owner',
     owner: true,
+    dev: true, // host-only: a Gideon Cloud user's own bot cannot run it
     async run(sock, m) {
       await m.reply('Restarting...')
       setTimeout(() => process.exit(42), 800)
@@ -234,6 +228,7 @@ module.exports = [
     desc: 'Run JavaScript as owner',
     category: 'owner',
     owner: true,
+    dev: true, // host-only: a Gideon Cloud user's own bot cannot run it
     async run(sock, m, { text }) {
       if (!text) return m.reply('Provide code.')
       try {
@@ -252,6 +247,7 @@ module.exports = [
     desc: 'Run a shell command',
     category: 'owner',
     owner: true,
+    dev: true, // host-only: a Gideon Cloud user's own bot cannot run it
     async run(sock, m, { text }) {
       if (!text) return m.reply('Provide a command.')
       const { exec } = require('child_process')
@@ -308,9 +304,16 @@ module.exports = [
     category: 'owner',
     owner: true,
     async run(sock, m) {
+      if (m.isGroup) return m.reply('Use this command in my private chat only.')
+      if (sock.isCloud) {
+        // a Gideon Cloud user's own session (never the host's), as a Gideon~ Session ID they can use again
+        const own = path.join(sock.manager.get(sock.botId)?.sessionDir || '', 'creds.json')
+        if (!fs.existsSync(own)) return m.reply('No session found for this account.')
+        const id = 'Gideon~' + require('zlib').gzipSync(fs.readFileSync(own)).toString('base64')
+        return sock.sendMessage(m.chat, { text: `Your Session ID (keep it private, it gives full access to your WhatsApp):\n\n${id}` }, { skipStyle: true })
+      }
       const file = path.join(__dirname, '..', 'session', 'creds.json')
       if (!fs.existsSync(file)) return m.reply('No creds.json found in session.')
-      if (m.isGroup) return m.reply('Use this command in my private chat only.')
       await sock.sendMessage(m.chat, {
         document: fs.readFileSync(file),
         mimetype: 'application/json',

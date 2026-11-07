@@ -19,7 +19,6 @@ module.exports = [
     desc: 'Show your Gideon Premium status, or restore an ID: .premium id:GID-123456',
     category: CAT,
     owner: true,
-    cloudMain: true,
     async run(sock, m, { text, prefix }) {
       if (!who(m)) return m.reply('Only the main owner of this Gideon installation can manage Premium.')
       await premium.refreshPolicy(true).catch(() => {})
@@ -63,7 +62,6 @@ module.exports = [
     desc: 'Pay for Gideon Premium: .subscribe <plan> <email>',
     category: CAT,
     owner: true,
-    cloudMain: true,
     async run(sock, m, { args, prefix }) {
       if (!who(m)) return m.reply('Only the main owner of this Gideon installation can manage Premium.')
       await premium.refreshPolicy(true).catch(() => {})

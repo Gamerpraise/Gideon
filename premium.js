@@ -47,8 +47,9 @@ const numberOfJid = (jid) => String(jid || '').split(':')[0].split('@')[0].repla
 const ownerNumberOf = (c) => (c.key === 'main' ? config.ownerNumber : numberOfJid(c.sock?.user?.id))
 
 // ------------------------------------------------------------------ identity (installId + token issued by the server)
+const rootDb = () => (store.root ? store.root() : store.get())
 function identity(c) {
-  const db = store.get()
+  const db = rootDb()
   if (c.key === 'main') {
     db.premium = db.premium || { installId: null, token: null }
     return db.premium
@@ -234,7 +235,7 @@ async function stopBot(key, { release = false, forget = false } = {}) {
   c.entitlement = { active: false, at: 0, expiresAt: 0, premiumId: null }
   c.authCache = { okAt: 0 }
   if (forget && key !== 'main') {
-    const db = store.get()
+    const db = rootDb()
     if (db.premiumByBot) delete db.premiumByBot[key]
     store.save()
     ctxs.delete(key)
