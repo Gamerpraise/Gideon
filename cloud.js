@@ -23,27 +23,7 @@ const STATIC = { '/': HTML, '/index.html': HTML, '/cloud-config.js': ['cloud-con
 // ------------------------------------------------------------------ Session ID (Gideon~...)
 // The pairing site is not part of this project, so the decoder is deliberately tolerant: base64 / base64url,
 // optionally gzipped, containing the creds.json text. Anything else is rejected, never guessed at.
-function decodeSession(input) {
-  const raw = String(input || '').trim()
-  if (!/^Gideon~/.test(raw) || raw.length > 400000) throw new Error('bad')
-  const body = raw.slice('Gideon~'.length).trim()
-  const tries = []
-  if (body.startsWith('{')) tries.push(Buffer.from(body, 'utf8'))
-  for (const enc of ['base64', 'base64url']) {
-    try { tries.push(Buffer.from(body, enc)) } catch {}
-  }
-  for (let buf of tries) {
-    try {
-      if (buf[0] === 0x1f && buf[1] === 0x8b) buf = zlib.gunzipSync(buf, { maxOutputLength: 5e6 })
-      const text = buf.toString('utf8')
-      const creds = JSON.parse(text)
-      const me = String(creds?.me?.id || '')
-      const number = me.split(':')[0].split('@')[0].replace(/\D/g, '')
-      if (creds && typeof creds === 'object' && creds.noiseKey && creds.signedIdentityKey && number.length >= 8) return { text, number }
-    } catch {}
-  }
-  throw new Error('This Session ID could not be read. Generate a new one with the pair code button and paste the whole thing.')
-}
+const { decodeSession } = require('./sessionid')
 
 // ------------------------------------------------------------------ Firebase ID token verification
 const b64u = (s) => Buffer.from(s, 'base64url').toString('utf8')
@@ -113,8 +93,10 @@ function createCloud({ manager, dataDir, cfg = config.cloud, botName = config.bo
   const busy = new Set() // per-bot / per-number locks
   // WhatsApp told us the user logged this device out: the session is useless now, so delete it from disk and
   // forget the bot. (Called by bot.js. A user pressing STOP never reaches this; STOP keeps the session.)
-  manager.cloud.onLoggedOut = (id) => {
+  manager.cloud.numberTaken = (n) => takenNumbers().has(String(n))
+  manager.cloud.onLoggedOut = async (id) => {
     if (!meta.bots[id]) return
+    await manager.removeChildren(id) // the people this bot paired go with it
     fs.rmSync(dirOf(id), { recursive: true, force: true })
     delete meta.bots[id]
     save()

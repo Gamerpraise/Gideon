@@ -42,6 +42,7 @@ const registerInstall = (body) => call('post', '/install/register', body)
 const premiumAuthorize = (installId, token, command) => call('post', '/premium/authorize', { installId, token, command })
 const premiumStatus = (installId, token) => call('post', '/premium/status', { installId, token })
 const premiumClaim = (installId, token, ownerNumber, premiumId) => call('post', '/premium/claim', { installId, token, ownerNumber, premiumId })
+const premiumRelease = (installId, token) => call('post', '/premium/release', { installId, token })
 const premiumCheckout = (installId, token, plan, email) => call('post', '/premium/checkout', { installId, token, plan, email })
 const premiumPayment = (installId, token, reference) => call('post', '/premium/payment', { installId, token, reference })
 
@@ -143,6 +144,7 @@ module.exports = {
   premiumAuthorize,
   premiumStatus,
   premiumClaim,
+  premiumRelease,
   premiumCheckout,
   premiumPayment,
   join,

@@ -23,25 +23,50 @@ const state = {
   settings: { subscriptionEnabled: false, paidOnlyMode: false, paidOnlyFreeCommands: ['subscribe', 'premium'], paystackEnabled: false, premiumCommandsEnabled: true, economyEnabled: true, funEnabled: true, economyMode: 'LOCAL', freeModeMessage: FREE_MODE_MESSAGE },
   commands: null, // from the server; falls back to defaultMap
   policyAt: 0,
-  entitlement: { active: false, at: 0, expiresAt: 0, premiumId: null },
-  authCache: { okAt: 0 },
   reachable: false
 }
 
-// ------------------------------------------------------------------ identity (installId + token issued by the server)
-let registering = null
-function identity() {
-  const db = store.get()
-  db.premium = db.premium || { installId: null, token: null }
-  return db.premium
+// ------------------------------------------------------------------ one premium context per MAIN bot
+// The host's main bot (and everyone it pairs) is context 'main'. Every Gideon Cloud bot is the main bot of its own
+// owner, so it gets its own context: its own install on the server, its own Premium ID and its own entitlement.
+// People paired by a Cloud bot share that Cloud bot's context.
+const ctxs = new Map()
+const newCtx = (key) => ({ key, entitlement: { active: false, at: 0, expiresAt: 0, premiumId: null }, authCache: { okAt: 0 }, registering: null, timer: null, sock: null })
+const mainCtx = newCtx('main')
+ctxs.set('main', mainCtx)
+Object.defineProperty(state, 'entitlement', { get: () => mainCtx.entitlement, set: (v) => { mainCtx.entitlement = v } })
+Object.defineProperty(state, 'authCache', { get: () => mainCtx.authCache, set: (v) => { mainCtx.authCache = v } })
+function ctxFor(sock) {
+  const key = sock && sock.isCloud ? sock.botId : (sock && sock.parentId) || 'main'
+  let c = ctxs.get(key)
+  if (!c) { c = newCtx(key); ctxs.set(key, c) }
+  if (sock && sock.isCloud) c.sock = sock
+  return c
 }
-async function ensureInstall(accounts) {
-  const id = identity()
+const numberOfJid = (jid) => String(jid || '').split(':')[0].split('@')[0].replace(/\D/g, '')
+const ownerNumberOf = (c) => (c.key === 'main' ? config.ownerNumber : numberOfJid(c.sock?.user?.id))
+
+// ------------------------------------------------------------------ identity (installId + token issued by the server)
+function identity(c) {
+  const db = store.get()
+  if (c.key === 'main') {
+    db.premium = db.premium || { installId: null, token: null }
+    return db.premium
+  }
+  db.premiumByBot = db.premiumByBot || {}
+  return (db.premiumByBot[c.key] = db.premiumByBot[c.key] || { installId: null, token: null })
+}
+// ensureInstall(accounts, sock): `sock` picks whose identity (host main by default, or a Cloud bot)
+async function ensureInstall(accounts, sock) {
+  const c = ctxFor(sock)
+  const id = identity(c)
   if (id.installId && id.token) return id
   if (!net.configured()) return null
-  if (!registering) {
-    registering = net
-      .registerInstall({ ownerNumber: config.ownerNumber, accounts: accounts || [config.ownerNumber], version: require('./package.json').version })
+  const owner = ownerNumberOf(c)
+  if (!owner) return null // a Cloud bot whose WhatsApp is not connected yet
+  if (!c.registering) {
+    c.registering = net
+      .registerInstall({ ownerNumber: owner, accounts: accounts || [owner], version: require('./package.json').version })
       .then((r) => {
         if (r.ok && r.installId && r.token) {
           id.installId = r.installId
@@ -50,9 +75,9 @@ async function ensureInstall(accounts) {
         }
         return id.installId ? id : null
       })
-      .finally(() => { registering = null })
+      .finally(() => { c.registering = null })
   }
-  return registering
+  return c.registering
 }
 
 // ------------------------------------------------------------------ policy
@@ -72,17 +97,18 @@ async function refreshPolicy(force) {
 const entry = (name) => (state.commands && state.commands[name]) || defaultMap[name] || { t: 'F', e: 1, c: 'utility' }
 
 // ------------------------------------------------------------------ entitlement (background features need a sync answer)
-async function refreshEntitlement(force) {
-  if (!force && Date.now() - state.entitlement.at < ENTITLEMENT_TTL) return state.entitlement
-  const id = await ensureInstall()
-  if (!id) return state.entitlement
+async function refreshEntitlement(force, sock) {
+  const c = ctxFor(sock)
+  if (!force && Date.now() - c.entitlement.at < ENTITLEMENT_TTL) return c.entitlement
+  const id = await ensureInstall(null, sock)
+  if (!id) return c.entitlement
   const r = await net.premiumStatus(id.installId, id.token)
-  if (r.ok) state.entitlement = { active: !!r.active, at: Date.now(), expiresAt: r.expiresAt || 0, premiumId: r.premiumId || null, daysLeft: r.daysLeft }
+  if (r.ok) c.entitlement = { active: !!r.active, at: Date.now(), expiresAt: r.expiresAt || 0, premiumId: r.premiumId || null, daysLeft: r.daysLeft, reason: r.reason }
   else if (r.status === 401) { id.installId = null; id.token = null; store.save() } // the server forgot us: register again next time
-  return state.entitlement
+  return c.entitlement
 }
-function entitlementActive() {
-  const e = state.entitlement
+function entitlementActive(c) {
+  const e = c.entitlement
   if (!e.active) return false
   if (e.expiresAt && e.expiresAt < Date.now()) return false
   return Date.now() - e.at < GRACE_MS + ENTITLEMENT_TTL
@@ -90,16 +116,17 @@ function entitlementActive() {
 
 // Synchronous answer for background features (auto status view, anti-call, ...).
 // `feature` is the name of the command that controls the feature, e.g. "autostatus" or "anticall".
-function featureAllowed(feature) {
+function featureAllowed(feature, sock) {
   const e = entry(feature)
   if (e.t === 'R' || !e.e) return false
   if (e.t !== 'P') return true
   if (!state.settings.subscriptionEnabled) return !!state.settings.premiumCommandsEnabled // Free Mode: everyone gets everything
-  return !!(state.settings.premiumCommandsEnabled && entitlementActive())
+  return !!(state.settings.premiumCommandsEnabled && entitlementActive(ctxFor(sock)))
 }
 
 // ------------------------------------------------------------------ the gate used by handler.js
-async function gate(command) {
+async function gate(command, sock) {
+  const c = ctxFor(sock)
   await refreshPolicy().catch(() => {})
   const name = command.name.toLowerCase()
   const e = entry(name)
@@ -116,23 +143,23 @@ async function gate(command) {
   if (!s.subscriptionEnabled) return { allow: true }
 
   // Premium: ask the server every time (a successful answer is reused for a minute to keep commands quick)
-  if (Date.now() - state.authCache.okAt < 60 * 1000 && s.subscriptionEnabled) return { allow: true }
-  const id = await ensureInstall()
+  if (Date.now() - c.authCache.okAt < 60 * 1000 && s.subscriptionEnabled) return { allow: true }
+  const id = await ensureInstall(null, sock)
   if (!id) return { allow: false, message: s.subscriptionEnabled ? 'Could not reach the Gideon network to verify Premium right now. Try again shortly.' : s.freeModeMessage }
   const r = await net.premiumAuthorize(id.installId, id.token, name)
   if (r.ok && r.allow) {
-    state.authCache.okAt = Date.now()
-    state.entitlement = { ...state.entitlement, active: true, at: Date.now() }
+    c.authCache.okAt = Date.now()
+    c.entitlement = { ...c.entitlement, active: true, at: Date.now() }
     return { allow: true }
   }
   if (r.ok && r.allow === false) {
-    state.authCache.okAt = 0
-    if (r.code === 'NOT_PREMIUM' || r.code === 'EXPIRED') state.entitlement = { ...state.entitlement, active: false, at: Date.now() }
+    c.authCache.okAt = 0
+    if (r.code === 'NOT_PREMIUM' || r.code === 'EXPIRED') c.entitlement = { ...c.entitlement, active: false, at: Date.now() }
     return { allow: false, message: r.message || s.freeModeMessage }
   }
   if (r.status === 401) { id.installId = null; id.token = null; store.save(); return { allow: false, message: 'Premium could not be verified. Try again in a moment.' } }
   // server unreachable: honour a recent "yes", otherwise stay in free mode
-  if (state.authCache.okAt && Date.now() - state.authCache.okAt < GRACE_MS) return { allow: true }
+  if (c.authCache.okAt && Date.now() - c.authCache.okAt < GRACE_MS) return { allow: true }
   return { allow: false, message: s.subscriptionEnabled ? 'Could not reach the Gideon network to verify Premium right now. Try again shortly.' : s.freeModeMessage }
 }
 
@@ -172,6 +199,48 @@ function start(manager) {
   const quick = setInterval(() => refreshPolicy(true).catch(() => {}), POLICY_TTL)
   quick.unref?.()
 }
+// ---- Cloud bots: each one keeps its own install alive (this is the "I am online" signal that holds its Premium ID)
+function startBot(sock, manager) {
+  if (!sock || !sock.isCloud) return
+  const c = ctxFor(sock)
+  if (c.timer) return
+  const tick = async () => {
+    try {
+      await refreshPolicy().catch(() => {})
+      if (!state.settings.subscriptionEnabled || !c.sock?.user) return // Free Mode: nothing to hold, nothing to register
+      const owner = ownerNumberOf(c)
+      const accounts = [owner, ...manager.listChildren(c.key).map((b) => String(b.id).replace(/\D/g, ''))]
+      const id = await ensureInstall(accounts, c.sock)
+      if (id) {
+        await net.registerInstall({ installId: id.installId, token: id.token, ownerNumber: owner, accounts, version: require('./package.json').version })
+        await refreshEntitlement(true, c.sock)
+      }
+    } catch {}
+  }
+  setTimeout(tick, 15000)
+  c.timer = setInterval(tick, 5 * 60 * 1000)
+  c.timer.unref?.()
+}
+// A bot stopped / logged out / was deleted. `release` frees its Premium ID for another WhatsApp number (the ID and its
+// expiry are untouched). `forget` also drops this bot's identity (the bot itself is gone).
+async function stopBot(key, { release = false, forget = false } = {}) {
+  const c = ctxs.get(key)
+  if (!c) return
+  if (c.timer) { clearInterval(c.timer); c.timer = null }
+  try {
+    const id = identity(c)
+    if (release && id.installId && id.token && state.settings.subscriptionEnabled) await net.premiumRelease(id.installId, id.token)
+  } catch {}
+  c.entitlement = { active: false, at: 0, expiresAt: 0, premiumId: null }
+  c.authCache = { okAt: 0 }
+  if (forget && key !== 'main') {
+    const db = store.get()
+    if (db.premiumByBot) delete db.premiumByBot[key]
+    store.save()
+    ctxs.delete(key)
+  }
+}
+
 function accountsOf(manager) {
   try {
     const list = []
@@ -182,4 +251,4 @@ function accountsOf(manager) {
   } catch { return [config.ownerNumber] }
 }
 
-module.exports = { gate, featureAllowed, economyRedirect, ensureInstall, refreshPolicy, refreshEntitlement, start, state, entry, FREE_MODE_MESSAGE }
+module.exports = { gate, featureAllowed, economyRedirect, ensureInstall, refreshPolicy, refreshEntitlement, start, startBot, stopBot, state, entry, FREE_MODE_MESSAGE }

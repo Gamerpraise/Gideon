@@ -16,8 +16,9 @@ const base = { subscriptionEnabled: false, premiumCommandsEnabled: true, economy
 const net = {
   configured: () => true,
   policy: async () => (server.up ? { ok: true, settings: { ...base, ...server.settings }, commands: server.commands || fullCommands } : { ok: false, error: 'UNREACHABLE' }),
-  registerInstall: async () => ({ ok: true, installId: 'inst_x', token: 'tok' }),
-  premiumAuthorize: async (i, t, c) => { server.calls.push(c); return server.up ? server.auth : { ok: false, error: 'UNREACHABLE' } },
+  registerInstall: async (b) => (b.installId ? { ok: true } : { ok: true, installId: b.ownerNumber === '2348000000001' ? 'inst_x' : 'inst_' + b.ownerNumber, token: 'tok' }),
+  premiumRelease: async (i) => { server.released = (server.released || []).concat(i); return { ok: true, released: true } },
+  premiumAuthorize: async (i, t, c) => { server.calls.push(c); server.lastInstall = i; return server.up ? server.auth : { ok: false, error: 'UNREACHABLE' } },
   premiumStatus: async () => (server.up ? { ok: true, active: !!server.active, expiresAt: Date.now() + 86400000 } : { ok: false, error: 'UNREACHABLE' })
 }
 inject('network.js', net)
@@ -51,6 +52,32 @@ const G = async (name, category) => { await premium.refreshPolicy(true); return 
   const getCommand = (n) => table[n] || null
   await t('economy mode LOCAL: local commands run as themselves', async () => { await premium.refreshPolicy(true); assert.strictEqual(premium.economyRedirect(local('balance'), getCommand), null) })
   await t('economy mode GLOBAL: local commands run their Global Network twin (including renamed ones)', async () => { server.settings = { economyMode: 'GLOBAL' }; await premium.refreshPolicy(true); assert.strictEqual(premium.economyRedirect(local('balance'), getCommand).name, 'gbalance'); assert.strictEqual(premium.economyRedirect(local('transfer'), getCommand).name, 'gsend'); assert.strictEqual(premium.economyRedirect(local('leaderboard'), getCommand).name, 'grichest'); assert.strictEqual(premium.economyRedirect(local('coinflipbet'), getCommand).name, 'gcoinflip'); assert.strictEqual(premium.economyRedirect(local('donate'), getCommand), null, 'no twin: stays local'); assert.strictEqual(premium.economyRedirect(globalCmd('gbalance'), getCommand), null); assert.strictEqual(premium.economyRedirect({ name: 'joke', category: 'fun' }, getCommand), null) })
+  // ---- every Cloud bot is the main bot of its own number: its own install, its own Premium ID, its own entitlement
+  const cloudSock = { isCloud: true, botId: 'cb_a', user: { id: '2348011111111:1@s.whatsapp.net' } }
+  await t('a Cloud bot asks the server as ITS OWN install, the host as the host', async () => {
+    server.settings = { subscriptionEnabled: true }; server.auth = { ok: true, allow: true }
+    await premium.refreshPolicy(true); await premium.gate(cmd('gideonai'), cloudSock); assert.strictEqual(server.lastInstall, 'inst_2348011111111'); assert(db.premiumByBot.cb_a.installId)
+    premium.state.authCache.okAt = 0; await premium.gate(cmd('gideonai')); assert.strictEqual(server.lastInstall, 'inst_x')
+  })
+  await t('people paired by a Cloud bot share that Cloud bot, not the host', async () => {
+    await premium.stopBot('cb_a')
+    server.settings = { subscriptionEnabled: true }; server.auth = { ok: true, allow: true }; await premium.refreshPolicy(true)
+    await premium.gate(cmd('gideonai'), { isSub: true, parentId: 'cb_a', botId: '2348022222222' }); assert.strictEqual(server.lastInstall, 'inst_2348011111111')
+  })
+  await t('host Premium never leaks to a Cloud bot (and the other way round)', async () => {
+    await premium.stopBot('cb_a')
+    server.settings = { subscriptionEnabled: true }; server.active = true; await premium.refreshPolicy(true); await premium.refreshEntitlement(true)
+    assert.strictEqual(premium.featureAllowed('anticall'), true); assert.strictEqual(premium.featureAllowed('anticall', cloudSock), false)
+    await premium.refreshEntitlement(true, cloudSock); assert.strictEqual(premium.featureAllowed('anticall', cloudSock), true)
+  })
+  await t('stopping a Cloud bot keeps its ID bound; deleting or logging it out releases the ID and forgets the identity', async () => {
+    server.settings = { subscriptionEnabled: true }; await premium.refreshPolicy(true); server.released = []
+    await premium.stopBot('cb_a'); assert.deepStrictEqual(server.released, [], 'stop does not release'); assert(db.premiumByBot.cb_a)
+    await premium.stopBot('cb_a', { release: true, forget: true }); assert.deepStrictEqual(server.released, ['inst_2348011111111']); assert(!db.premiumByBot.cb_a)
+  })
+  await t('no release call in Free Mode (nothing to release)', async () => {
+    server.settings = {}; await premium.refreshPolicy(true); server.released = []; await premium.gate(cmd('lock'), cloudSock); await premium.stopBot('cb_x', { release: true, forget: true }); assert.deepStrictEqual(server.released, [])
+  })
   console.log(`\nbot tests: ${passed} passed, ${failed} failed`)
   process.exit(failed ? 1 : 0)
 })()

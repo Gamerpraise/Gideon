@@ -107,7 +107,7 @@ async function handleMessage(sock, msg) {
     const m = serialize(sock, msg)
     if (!m.body && !m.quoted) {
       // voice notes have no text: the auto-reply may still answer them
-      if (m.mtype === 'audioMessage' && !isBanned(m.sender)) { if (premium.featureAllowed('autoreply')) await autoreply.checkVoice(sock, m).catch(() => {}) }
+      if (m.mtype === 'audioMessage' && !isBanned(m.sender)) { if (premium.featureAllowed('autoreply', sock)) await autoreply.checkVoice(sock, m).catch(() => {}) }
       return
     }
     // resolve hidden @lid senders to a phone jid when Baileys knows the mapping
@@ -139,7 +139,9 @@ async function handleMessage(sock, msg) {
     const db = store.get()
     // group protection runs first: a muted or private-mode bot must still delete links
     if (m.isGroup && (await guard.antilink(sock, m).catch((err) => { console.log('[antilink]', err.message); return false }))) return
-    if (!db.public && !m.isOwner) return
+    // a Cloud bot has its own public/private switch; everyone else follows the host's
+    const isOpen = sock.isCloud ? !(db.cloudPrivate || {})[sock.botId] : db.public
+    if (!isOpen && !m.isOwner) return
 
     if (m.isGroup) {
       const groupSettings = {
@@ -178,7 +180,7 @@ async function handleMessage(sock, msg) {
     if (!command) {
       if (parsed) console.log(`[cmd] unknown: ${parsed.cmd}`)
       levels.onMessage(sock, m).catch(() => {})
-      if (premium.featureAllowed('autoreply')) await autoreply.check(sock, m).catch((err) => console.log('[autoreply]', err.message))
+      if (premium.featureAllowed('autoreply', sock)) await autoreply.check(sock, m).catch((err) => console.log('[autoreply]', err.message))
       return
     }
 
@@ -193,7 +195,7 @@ async function handleMessage(sock, msg) {
     if (command.dangerous && config.ownerIsDefault && !m.fromMe) {
       return m.reply('For safety this command only works from the bot account itself until you set your own owner number in config.local.json (see README).')
     }
-    if (command.owner && sock.isSub && !command.subSafe) {
+    if (command.owner && sock.isSub && !command.subSafe && !(sock.isCloud && command.cloudMain)) {
       return m.reply('This command is only available on the main Gideon bot.')
     }
     if (command.group && !m.isGroup) {
@@ -224,7 +226,7 @@ async function handleMessage(sock, msg) {
     // Platform layer (see premium.js): admin switches, FREE/PREMIUM tier, and the server-side Premium check.
     // Economy mode: when the admin selects GLOBAL, the local economy commands run their Global Network twin.
     const target = premium.economyRedirect(command, getCommand) || command
-    const verdict = await premium.gate(target)
+    const verdict = await premium.gate(target, sock)
     if (!verdict.allow) return m.reply(verdict.message)
     if (config.autoTyping) sock.sendPresenceUpdate('composing', m.chat).catch(() => {})
     await target.run(sock, m, { args: parsed.args, text: parsed.text, prefix: config.prefix, commands: listCommands(), config, store, fn })

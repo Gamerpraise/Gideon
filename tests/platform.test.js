@@ -147,11 +147,29 @@ async function t(name, fn) { try { await fn(); passed++; results.push(['PASS', n
     assert.strictEqual((await authz(inst, 'gideonai')).allow, true)
   })
   await t('premium stays active across a "restart" (a brand-new session for the same installation)', async () => { assert.strictEqual((await authz(inst, 'imagine')).allow, true) })
-  await t('another installation cannot steal a bound ID', async () => { const other = await reg('2349000000009'); const r = await R('POST', '/premium/claim', { installId: other.installId, token: other.token, premiumId: manualId }); assert.strictEqual(r.body.error, 'BOUND_TO_ANOTHER'); assert.strictEqual((await authz(other, 'gideonai')).allow, false) })
-  await t('same owner number can re-bind after losing its database (limited to 3 times)', async () => {
-    let last
-    for (let i = 0; i < 4; i++) { const again = await reg('2348000000001'); last = await R('POST', '/premium/claim', { installId: again.installId, token: again.token, premiumId: manualId }); if (i < 3) assert.strictEqual(last.body.active, true, 'rebind ' + i) }
-    assert.strictEqual(last.body.error, 'BOUND_TO_ANOTHER')
+  let manualHolder
+  const hb = (i) => R('POST', '/install/register', { installId: i.installId, token: i.token, ownerNumber: i.ownerNumber, accounts: [i.ownerNumber], version: 't' })
+  await t('an ID in use by a live WhatsApp cannot be taken by another one (IN_USE)', async () => { await hb(inst); const other = await reg('2349000000009'); const r = await R('POST', '/premium/claim', { installId: other.installId, token: other.token, premiumId: manualId }); assert.strictEqual(r.body.error, 'IN_USE'); assert.strictEqual((await authz(other, 'gideonai')).allow, false); assert.strictEqual((await authz(inst, 'gideonai')).allow, true, 'holder keeps it') })
+  await t('release frees the ID: the same ID and expiry move to a different number', async () => {
+    const before = (await db.collection('premiumIds').doc(manualId).get()).data()
+    const rel = await R('POST', '/premium/release', { installId: inst.installId, token: inst.token }); assert.strictEqual(rel.body.released, true)
+    assert.strictEqual((await authz(inst, 'gideonai')).allow, false, 'released bot loses premium')
+    const other = await reg('2349000000009'); const r = await R('POST', '/premium/claim', { installId: other.installId, token: other.token, premiumId: manualId })
+    assert.strictEqual(r.body.active, true); assert.strictEqual((await authz(other, 'gideonai')).allow, true)
+    const after = (await db.collection('premiumIds').doc(manualId).get()).data()
+    assert.strictEqual(after.expiresAt, before.expiresAt, 'expiry unchanged'); assert.strictEqual(after.boundInstallId, other.installId)
+    manualHolder = other
+  })
+  await t('a holder that went silent (offline > 12 min, no logout) loses the ID to a new claim', async () => {
+    await hb(manualHolder); await db.collection('installs').doc(manualHolder.installId).update({ lastSeen: Date.now() - 13 * 60 * 1000 })
+    const n = await reg('2348111111111'); const r = await R('POST', '/premium/claim', { installId: n.installId, token: n.token, premiumId: manualId }); assert.strictEqual(r.body.active, true)
+    assert.strictEqual((await authz(manualHolder, 'gideonai')).allow, false); manualHolder = n
+  })
+  await t('release does nothing for an install without an ID, and a bad token is refused', async () => { const x = await reg('2348222222222'); assert.strictEqual((await R('POST', '/premium/release', { installId: x.installId, token: x.token })).body.released, false); assert.strictEqual((await R('POST', '/premium/release', { installId: x.installId, token: 'nope' })).status, 401) })
+  await t('claiming a different ID releases the one the bot held before', async () => {
+    const x = await reg('2348333333333'); const a1 = (await A('POST', '/premium/grant', { days: 5 })).body.id, a2 = (await A('POST', '/premium/grant', { days: 5 })).body.id
+    await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: a1 }); await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: a2 })
+    assert.strictEqual((await db.collection('premiumIds').doc(a1).get()).data().boundInstallId, null); assert.strictEqual((await authz(x, 'gideonai')).allow, true)
   })
   await t('claim attempts are rate limited per installation', async () => { const x = await reg('2347000000007'); let r; for (let i = 0; i < 10; i++) r = await R('POST', '/premium/claim', { installId: x.installId, token: x.token, premiumId: 'GID-111111' }); assert.strictEqual(r.status, 429) })
   await t('expired Premium ID: blocked with EXPIRED', async () => {

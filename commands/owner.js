@@ -10,10 +10,15 @@ module.exports = [
     desc: 'Set bot to public mode',
     category: 'owner',
     owner: true,
+    cloudMain: true,
     async run(sock, m, { store }) {
       // The one owner command co-owners still can't use (see handler.js) - .self/.private is a
       // lockdown the main owner can set, so a co-owner being able to undo it would defeat the
       // point of it being a lockdown. Everything else a co-owner can now do, same as the owner.
+      if (sock.isCloud) {
+        store.set('cloudPrivate', { ...(store.get().cloudPrivate || {}), [sock.botId]: false })
+        return m.reply('Bot is now public.')
+      }
       if (!m.isMainOwner) return m.reply('🔒 Only the main owner can take the bot out of private mode.')
       store.set('public', true)
       await m.reply('Bot is now public.')
@@ -25,8 +30,10 @@ module.exports = [
     desc: 'Set bot to private mode',
     category: 'owner',
     owner: true,
+    cloudMain: true,
     async run(sock, m, { store }) {
-      store.set('public', false)
+      if (sock.isCloud) store.set('cloudPrivate', { ...(store.get().cloudPrivate || {}), [sock.botId]: true })
+      else store.set('public', false)
       await m.reply('Bot is now private.')
     }
   },

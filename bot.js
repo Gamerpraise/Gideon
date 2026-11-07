@@ -36,6 +36,22 @@ function prepareMainSession() {
     path.join(process.cwd(), 'cred.json'),
     path.join(process.cwd(), 'creds.json')
   ]
+  // SESSION_ID (Render > Environment): the owner's Gideon~ Session ID becomes the MAIN bot's creds.json on every start,
+  // so it survives hosts that wipe their disk. A saved creds.json for the same number is kept (it holds newer keys).
+  if (process.env.SESSION_ID) {
+    try {
+      const { decodeSession } = require('./sessionid')
+      const wanted = decodeSession(process.env.SESSION_ID)
+      let saved = ''
+      try { saved = String(JSON.parse(fs.readFileSync(credsPath, 'utf8'))?.me?.id || '').split(':')[0].split('@')[0].replace(/\D/g, '') } catch {}
+      if (saved !== wanted.number) {
+        fs.writeFileSync(credsPath, wanted.text, { mode: 0o600 })
+        console.log('[session] main session loaded from SESSION_ID')
+      }
+    } catch (err) {
+      console.log('[session] SESSION_ID could not be used:', err.message)
+    }
+  }
   if (!fs.existsSync(credsPath)) {
     const found = candidates.find((file) => file !== credsPath && fs.existsSync(file))
     if (found) {
@@ -52,7 +68,7 @@ function prepareMainSession() {
 }
 
 // ------------------------------------------------------------------ one bot
-function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber = '', onPairCode = null, onPairFail = null, onQr = null }) {
+function createBot({ id, sessionDir, isSub = false, cloud = false, parent = '', pairingNumber = '', onPairCode = null, onPairFail = null, onQr = null }) {
   const msgRetryCounterCache = new NodeCache({ stdTTL: 600, checkperiod: 120, useClones: false })
   const messageCache = new NodeCache({ stdTTL: 1800, checkperiod: 300, useClones: false })
   const sentMessageCache = new NodeCache({ stdTTL: 1800, checkperiod: 300, useClones: false })
@@ -60,7 +76,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
   const groupCache = new NodeCache({ stdTTL: 300, checkperiod: 120, useClones: false })
 
   // status / lastError / openedAt / logs are read by cloud.js (GIDEON CLOUD). Logs hold status lines only, never credentials.
-  const ctl = { id, isSub, cloud, sock: null, sessionDir, stopped: false, startedAt: Date.now(), status: 'connecting', lastError: '', openedAt: 0, logs: [] }
+  const ctl = { id, isSub, cloud, parent, sock: null, sessionDir, stopped: false, startedAt: Date.now(), status: 'connecting', lastError: '', openedAt: 0, logs: [] }
   ctl.note = (text) => {
     ctl.logs.push(`${new Date().toISOString()} ${text}`)
     if (ctl.logs.length > 200) ctl.logs.shift()
@@ -111,6 +127,9 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
       return meta
     }
     sock.isSub = isSub
+    sock.isCloud = cloud // a Gideon Cloud bot: the main bot of its own owner
+    sock.botId = id
+    sock.parentId = parent // set for people paired by a Cloud bot
     sock.botId = id
     sock.manager = manager
     sock.box = box
@@ -144,7 +163,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
     if (bioTimer) return
     const run = async () => {
       const bio = store.get().autobio
-      if (!bio?.enabled || !sock.user || !premium.featureAllowed('autobio')) return
+      if (!bio?.enabled || !sock.user || !premium.featureAllowed('autobio', sock)) return
       const moment = require('moment-timezone')
       const now = moment.tz(config.timezone)
       const text = String(bio.text)
@@ -294,6 +313,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
         followChannel(sock).catch(() => {})
         if (!isSub) devqueue.start(sock)
         if (!isSub) premium.start(manager)
+        if (cloud) premium.startBot(sock, manager)
         if (!isSub && !store.get().devNoticeShown) {
           store.get().devNoticeShown = true
           store.save()
@@ -351,13 +371,17 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
             ctl.note('logged out by WhatsApp, session deleted')
             ctl.stopped = true
             Promise.resolve()
+              .then(() => premium.stopBot(id, { release: true, forget: true }))
               .then(() => manager.cloud.onLoggedOut && manager.cloud.onLoggedOut(id))
               .catch((err) => console.log(`[${id}] cloud cleanup failed: ${err.message}`))
               .finally(() => { try { ctl.sock?.end?.(undefined) } catch {} ; if (bots.get(id) === ctl) bots.delete(id) })
           } else if (isSub) {
             console.log(`[${id}] user unlinked the device, removing session`)
             manager.remove(id).catch(() => {})
-          } else console.log('[session] logged out. Replace the files in ./session with a fresh creds.json and restart.')
+          } else {
+            premium.stopBot('main', { release: true }).catch(() => {}) // frees the host's Premium ID for another number
+            console.log('[session] logged out. Replace the files in ./session with a fresh creds.json and restart.')
+          }
           return
         }
         if (status === B.DisconnectReason.connectionReplaced) {
@@ -384,8 +408,8 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
         if (msg.key?.remoteJid === 'status@broadcast') {
           // paired accounts follow the main bot's status settings (autostatus / statusreact / emojis)
           if (msg.key.fromMe) continue
-          if (config.autoStatusView && premium.featureAllowed('autostatus')) sock.readMessages([msg.key]).catch(() => {})
-          if (config.autoStatusReact && premium.featureAllowed('statusreact') && msg.key.participant) {
+          if (config.autoStatusView && premium.featureAllowed('autostatus', sock)) sock.readMessages([msg.key]).catch(() => {})
+          if (config.autoStatusReact && premium.featureAllowed('statusreact', sock) && msg.key.participant) {
             sock
               .sendMessage(
                 'status@broadcast',
@@ -396,7 +420,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
           }
           // Owner setting, applies to every paired account too - each one saves to its OWN
           // DM-to-self (sock.getOwnerJid() below resolves per-account), not the main owner's.
-          if (config.autoSaveStatus && premium.featureAllowed('autosavestatus') && msg.message) {
+          if (config.autoSaveStatus && premium.featureAllowed('autosavestatus', sock) && msg.message) {
             fn.downloadAny(msg.message, 30 * 1024 * 1024)
               .then(async (media) => {
                 const from = `@${fn.cleanJid(msg.key.participant || '')}`
@@ -429,7 +453,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
     })
 
     sock.ev.on('messages.update', async (updates) => {
-      if (!store.get().antidelete || !premium.featureAllowed('antidelete')) return // restricted by platform policy (see commandpolicy)
+      if (!store.get().antidelete || !premium.featureAllowed('antidelete', sock)) return // restricted by platform policy (see commandpolicy)
       for (const update of updates) {
         try {
           const revoked = update.update?.message === null || update.update?.messageStubType === 1
@@ -449,7 +473,7 @@ function createBot({ id, sessionDir, isSub = false, cloud = false, pairingNumber
 
     // anti-call: reject, warn, and block the caller after 3 calls
     sock.ev.on('call', async (calls) => {
-      if (!config.autoRejectCall || !premium.featureAllowed('anticall')) return
+      if (!config.autoRejectCall || !premium.featureAllowed('anticall', sock)) return
       const MAX = 3
       for (const call of calls) {
         if (call.status !== 'offer' || call.isGroup) continue
@@ -544,7 +568,9 @@ const manager = {
   get: (id) => bots.get(id),
   list: () => [...bots.values()],
   // cloud bots (GIDEON CLOUD) are not paired users: .pair / .listpaired / limits never see them
-  listSubs: () => [...bots.values()].filter((b) => b.isSub && !b.cloud),
+  listSubs: () => [...bots.values()].filter((b) => b.isSub && !b.cloud && !b.parent),
+  // people paired by one Cloud bot (they never count toward the host's own pair limit)
+  listChildren: (parentId) => [...bots.values()].filter((b) => b.parent === parentId),
 
   startMain() {
     const ctl = createBot({ id: 'main', sessionDir: prepareMainSession() })
@@ -573,8 +599,15 @@ const manager = {
         fs.rmSync(full, { recursive: true, force: true }) // half-finished pairing
         continue
       }
+      let parent = ''
+      try { parent = String(JSON.parse(fs.readFileSync(path.join(full, 'parent.json'), 'utf8')).parent || '') } catch {}
+      // paired by a Cloud bot whose account no longer exists: remove the leftover session
+      if (parent && !fs.existsSync(path.join(__dirname, 'cloud-data', 'sessions', parent))) {
+        fs.rmSync(full, { recursive: true, force: true })
+        continue
+      }
       setTimeout(() => {
-        const ctl = createBot({ id: dir, sessionDir: full, isSub: true })
+        const ctl = createBot({ id: dir, sessionDir: full, isSub: true, parent })
         bots.set(dir, ctl)
         ctl.start().catch((err) => console.error(`[${dir}] start failed`, err))
         console.log(`[pair] restored ${dir}`)
@@ -584,15 +617,21 @@ const manager = {
   },
 
   // owner runs .pair 234xxxxxxxxxx  ->  resolves with the pairing code
-  pair(number) {
+  pair(number, { parent = '' } = {}) {
     const num = String(number || '').replace(/\D/g, '')
     if (num.length < 8 || num.length > 15) return Promise.reject(new Error('Use the full number with country code, e.g. 2348012345678'))
     if (bots.has(num)) return Promise.reject(new Error('That number is already paired.'))
     if (num === config.ownerNumber) return Promise.reject(new Error('That is the main bot number.'))
-    if (manager.listSubs().length >= config.maxSubBots) return Promise.reject(new Error(`Pair limit reached (${config.maxSubBots}).`))
+    if (parent) {
+      // a Cloud bot pairing its own people: capped per bot, and never a number Gideon already runs
+      const cap = config.cloud?.maxPairedPerBot ?? 3
+      if (manager.listChildren(parent).length >= cap) return Promise.reject(new Error(`You can pair up to ${cap} people.`))
+      if (manager.cloud.numberTaken && manager.cloud.numberTaken(num)) return Promise.reject(new Error('That number is already connected to Gideon.'))
+    } else if (manager.listSubs().length >= config.maxSubBots) return Promise.reject(new Error(`Pair limit reached (${config.maxSubBots}).`))
     const dir = path.join(subRoot, num)
     fs.rmSync(dir, { recursive: true, force: true })
     fs.mkdirSync(dir, { recursive: true })
+    if (parent) fs.writeFileSync(path.join(dir, 'parent.json'), JSON.stringify({ parent }))
     return new Promise((resolve, reject) => {
       let settled = false
       let latestQr = null
@@ -606,6 +645,7 @@ const manager = {
         id: num,
         sessionDir: dir,
         isSub: true,
+        parent,
         pairingNumber: num,
         onQr: (qr) => {
           latestQr = qr
@@ -656,6 +696,7 @@ const manager = {
       const ctl = bots.get(id)
       if (!ctl || !ctl.cloud) return false
       await ctl.stop()
+      premium.stopBot(id) // no more "online" heartbeat; the ID frees itself ~12 minutes later unless the bot is started again
       ctl.note('stopped')
       return true
     },
@@ -665,8 +706,15 @@ const manager = {
       if (!ctl || !ctl.cloud) return false
       await ctl.stop({ logout: true })
       bots.delete(id)
+      await premium.stopBot(id, { release: true, forget: true }) // deleting the bot frees its Premium ID right away
+      await manager.removeChildren(id)
       return true
     }
+  },
+
+  // remove (and log out) everyone a Cloud bot paired
+  async removeChildren(parentId) {
+    for (const c of manager.listChildren(parentId)) await manager.remove(c.id, { logout: true }).catch(() => {})
   },
 
   async remove(id, { logout = false } = {}) {

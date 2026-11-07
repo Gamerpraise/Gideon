@@ -41,3 +41,21 @@ DELETE logs the linked device out of WhatsApp (same as `.unpair`) and removes th
 
 ## Tests
 `npm run test:cloud` runs the API (auth, ownership isolation, secrecy, limits, static whitelist, restore), the dashboard script end to end against the real API, and the `bot.js` hooks with a fake Baileys. Not covered: a real WhatsApp login, real Firebase, and visual layout (open the page on phone and desktop).
+
+## Making yourself the MAIN bot (SESSION_ID)
+Only one WhatsApp account per deployment is the main bot (full owner commands such as `.pair` and `.self`). Anyone added through the dashboard is a sub-bot. On hosts without a file manager (Render), set an environment variable `SESSION_ID` to your own `Gideon~...` Session ID: on every start it is written to `session/creds.json`, so you are the main bot even after a disk wipe. A saved `creds.json` for the same number is kept; a different number replaces it. Do not also add your own number in the dashboard. Treat `SESSION_ID` like a password.
+
+## Cloud users are MAIN bots of their own number
+Everyone who adds a Session ID in the dashboard runs as the main bot of their own WhatsApp number. From their own chat ("Message yourself") they can use `.pair <number>`, `.listpaired`, `.unpair <number>`, `.public` and `.self`. These work only on their own bot:
+- `.pair` allows at most `cloud.maxPairedPerBot` people (3) per Cloud bot. Each paired person is another live WhatsApp connection, so this is the RAM guard. People paired by a Cloud bot never use the host's own `maxSubBots` slots and never show in the host's `.listpaired`.
+- `.public` / `.self` switch only that Cloud bot, never the host.
+- Deleting a Cloud bot, or WhatsApp logging it out, also removes everyone it paired (their sessions are deleted and their devices logged out).
+- Every other owner command (update, broadcast, notify, botcount, economy admin, addowner, etc.) stays host-only.
+Raise `cloud.maxPairedPerBot` in `config.js` when you move to a bigger host.
+
+## Premium IDs: one ID, one live WhatsApp
+- A Premium ID never changes. Renewing adds days to the same ID, and it stays until it expires.
+- Every main bot (the host's, and each Cloud user's) is its own installation on the Global server and enters its own ID: `.premium id:GID-123456` in "Message yourself". People a Cloud user pairs share that user's Premium.
+- An ID works on ONE WhatsApp at a time. While a bot is online it sends a heartbeat every 5 minutes. If another number tries the same ID meanwhile, the server answers "in use".
+- To use the ID on another number: log the first one out of WhatsApp or delete its bot. The ID is freed immediately (same ID, same expiry). If the first bot just went offline without logging out, it frees itself about 12 minutes after it was last online. STOP in the dashboard does not free it right away.
+- Needs the updated Global Gideon server (`/premium/release`, live-holder check). Deploy the server first, then the bot.

@@ -63,6 +63,7 @@ const config = {
     port: 3000, // process.env.PORT wins (Render, Heroku...)
     firebaseProjectId: 'gideon-e2265',
     maxBotsPerUser: 3,
+    maxPairedPerBot: 3, // each Cloud bot is a MAIN bot for its owner: they can .pair up to this many people
     maxBots: 20,
     requireVerifiedEmail: true,
     allowedOrigins: [] // only needed if the dashboard page is hosted on a different domain than the bot
